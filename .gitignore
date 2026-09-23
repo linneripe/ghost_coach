@@ -41,6 +41,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -76,6 +77,11 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Local editor and Meta SDK build artifacts
+.vscode/
+.utmp/
+/RuntimeActionBindings.json
 
 # AI assistant context files (local only, never commit)
 CLAUDE.md
