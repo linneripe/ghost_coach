@@ -76,3 +76,7 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# AI assistant context files (local only, never commit)
+CLAUDE.md
+AGENTS.md
