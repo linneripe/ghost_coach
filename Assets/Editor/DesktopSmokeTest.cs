@@ -70,6 +70,13 @@ public static class DesktopSmokeTest {
         if (phase == 0 && t > 0.5f) {
             check(rig != null, "desktop rig created when no headset");
             if (rig == null) { finish(); return; }
+            GhostCoach gc = Object.FindFirstObjectByType<GhostCoach>();
+            if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
+                check(gc.coach_ghost.showing, "mock coach shown when nothing is recorded");
+                GameObject mp = GameObject.Find("ghost paddle");
+                if (mp != null)
+                    save_screenshot(mp.transform.position, "Logs/smoke_mock_coach.png");
+            }
             rig.set_pointer(new Vector2(0.5f, 0.5f));
             next_phase();
         }

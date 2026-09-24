@@ -23,6 +23,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionRecorder recorder;
     public CoachGhost coach_ghost;
     public PathGuide path_guide;
+    public Table table;
     public Phase phase = Phase.Coach;
     public MotionClip coach_clip;
 
@@ -58,14 +59,21 @@ public class GhostCoach : MonoBehaviour {
         coach.recorder = recorder;
         coach.coach_ghost = ghost;
         coach.path_guide = guide;
+        coach.table = table;
         guide.stroke_scored += coach.stroke_scored;
     }
 
     void Start() {
         coach_clip = MotionClip.load_latest();
-        if (coach_clip != null)
-            Debug.Log("GhostCoach loaded coach clip " + coach_clip.name + ", "
-                      + coach_clip.contact_times().Count + " strokes");
+        if (coach_clip == null) {
+            // No recording yet: use a made-up forehand drive so both phases
+            // can be tried.  Recording a real coach replaces it.
+            float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
+            coach_clip = MockCoach.forehand_drive(table, ball_radius);
+            show_message("Demo-coach (påhittad forehand)\nA: byt fas   B: spela in riktig coach");
+        }
+        Debug.Log("GhostCoach coach clip " + coach_clip.name + " (" + coach_clip.source + "), "
+                  + coach_clip.contact_times().Count + " strokes");
         update_ghost();
     }
 

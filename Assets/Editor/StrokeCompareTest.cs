@@ -46,10 +46,43 @@ public static class StrokeCompareTest {
         StrokeScore wild = StrokeCompare.compare(coach, contact, stroke(new Vector3(0f, 0.5f, 0f), 70f, 3f), contact);
         check(wild.score >= 0 && wild.score < 40, "very different stroke scores low", wild);
 
+        check_mock_coach();
+
         bool ok = (failures.Count == 0);
         Debug.Log("StrokeCompareTest " + (ok ? "PASSED" : "FAILED") + ", " + failures.Count + " failed checks");
         if (Application.isBatchMode)
             EditorApplication.Exit(ok ? 0 : 1);
+    }
+
+    // The made-up coach used before real recordings exist should be a
+    // plausible stroke: repeated identically, ball meets the paddle at
+    // contact, and a drive-like paddle speed.
+    static void check_mock_coach() {
+        MotionClip mock = MockCoach.forehand_drive(Vector3.zero, 0.76f, 1.37f, 0.02f);
+        List<float> contacts = mock.contact_times();
+        check_value(contacts.Count == 5, "mock coach has 5 strokes", contacts.Count);
+        StrokeScore same = StrokeCompare.compare(mock, contacts[0], mock, contacts[2]);
+        check(same.score == 100, "mock strokes are repeated identically", same);
+        MotionFrame f = mock.sample(contacts[1]);
+        float ball_gap = (f.ball_position - f.paddle_position).magnitude;
+        check_value(ball_gap < 0.05f, "mock ball meets paddle at contact, gap m", ball_gap);
+        float h = 0.01f;
+        float speed = (mock.sample(contacts[1] + h).paddle_position
+                       - mock.sample(contacts[1] - h).paddle_position).magnitude / (2f * h);
+        check_value(speed > 3f && speed < 10f, "mock paddle speed at contact m/s", speed);
+        float lowest = 10f;
+        foreach (MotionFrame m in mock.frames)
+            if (Mathf.Abs(m.ball_position.z) < 1.37f)
+                lowest = Mathf.Min(lowest, m.ball_position.y);
+        check_value(lowest > 0.76f, "mock ball stays above the table surface, lowest m", lowest);
+        check_value(f.head_position.y > 1.3f && f.head_position.z < -1.37f,
+                    "mock coach head behind the end line, z", f.head_position.z);
+    }
+
+    static void check_value(bool ok, string what, float value) {
+        Debug.Log("StrokeCompareTest " + (ok ? "PASS " : "FAIL ") + what + " " + value.ToString("F3"));
+        if (!ok)
+            failures.Add(what);
     }
 
     static void check(bool ok, string what, StrokeScore s) {
