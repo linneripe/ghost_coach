@@ -76,11 +76,19 @@ public class Wand : MonoBehaviour {
 	position = velocity = angular_velocity = acceleration = Vector3.zero;
 	rotation = Quaternion.identity;
 
-	if (!have_device())
-	    return;
-
 	Vector3 p, v, a, av;
 	Quaternion r;
+	bool simulated = !have_device();
+	if (simulated)
+	{
+	    // No headset: mouse and keyboard hand motion in the editor.
+	    if (DesktopRig.active == null
+		|| !DesktopRig.active.hand_motion(left, out p, out r, out v))
+		return;
+	    av = a = Vector3.zero;
+	}
+	else
+	{
 	if (!device.TryGetFeatureValue(CommonUsages.devicePosition, out p))
 	    return;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceRotation, out r))
@@ -91,7 +99,8 @@ public class Wand : MonoBehaviour {
 	    return;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceAcceleration, out a))
 	    return;
-	
+	}
+
 #if old_steamvr
         int i = device_index();
         var compositor = OpenVR.Compositor;
@@ -168,8 +177,8 @@ public class Wand : MonoBehaviour {
 	  be advanced by the right amount.  Advancing ball by only half
 	  the amount can cause double strikes.
 	 */
-        float time_step = 1.0f / 90.0f;
-	if (hv.magnitude > 2f)
+        float time_step = (simulated ? Mathf.Max(Time.deltaTime, 0.001f) : 1.0f / 90.0f);
+	if (hv.magnitude > 2f && !simulated)
 	    //hv = 2*(hp - prev_pos) / time_step - prev_hv; // Unstable
 	    hv = (hp - prev_pos) / time_step;
 //        Vector3 hav = new Vector3 (-pose.vAngularVelocity.v0, -pose.vAngularVelocity.v1, pose.vAngularVelocity.v2);
