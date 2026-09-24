@@ -50,7 +50,7 @@ public class DesktopRig : MonoBehaviour {
 
     // Haptic pulses are shown on screen since there is no controller to vibrate.
     float paddle_haptic_until = -1f, free_haptic_until = -1f;
-    int paddle_haptic_count = 0, free_haptic_count = 0;
+    public int paddle_haptic_count = 0, free_haptic_count = 0;
     float haptic_min_show = 0.15f;    // Seconds, so short pulses are visible.
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

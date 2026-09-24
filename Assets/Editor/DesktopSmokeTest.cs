@@ -16,6 +16,7 @@ public static class DesktopSmokeTest {
     static Vector3 paddle_start, ball_start;
     static Ball tossed_ball;
     static float toss_max_height;
+    static int haptic_count_before;
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -101,6 +102,33 @@ public static class DesktopSmokeTest {
         else if (phase == 4 && t > 0.5f) {
             float d = (play.ball_in_play.transform.position - ball_start).magnitude;
             check(d > 0.3f, "robot served ball moved " + d.ToString("F2") + " m");
+
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(coach != null, "GhostCoach created");
+            if (coach == null) { finish(); return; }
+            GhostCoach.Phase before = coach.phase;
+            haptic_count_before = rig.paddle_haptic_count;
+            coach.OnGhostTogglePhase();
+            check(coach.phase != before, "phase toggled to " + coach.phase);
+            coach.OnGhostRecord();
+            check(coach.recorder.recording, "recording started");
+            next_phase();
+        }
+        else if (phase == 5 && t > 0.5f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(rig.paddle_haptic_count > haptic_count_before,
+                  "haptic pulses shown in desktop mode (" + (rig.paddle_haptic_count - haptic_count_before) + ")");
+            coach.OnGhostRecord();
+            MotionClip c = coach.coach_clip;
+            check(!coach.recorder.recording && c != null && c.frames.Count > 10,
+                  "recording saved " + (c == null ? 0 : c.frames.Count) + " frames");
+            if (c != null) {
+                MotionFrame m = c.sample(0.5f * c.duration);
+                check(m != null && m.head_position.y > 0.5f,
+                      "clip head height in table space " + (m == null ? 0f : m.head_position.y).ToString("F2") + " m");
+                // Remove the test clip so it is not loaded as the coach.
+                System.IO.File.Delete(System.IO.Path.Combine(MotionClip.clips_directory(), c.name + ".json"));
+            }
             finish();
         }
     }
