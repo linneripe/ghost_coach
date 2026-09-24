@@ -120,75 +120,27 @@ public class CoachGhost : MonoBehaviour {
     }
 
     void place_stand_marker() {
-        // Average coach head position over the loop, on the floor.
-        Vector3 sum = Vector3.zero, forward_sum = Vector3.zero;
-        int n = 0;
-        foreach (MotionFrame f in clip.frames) {
-            if (f.t < loop_start || f.t > loop_end)
-                continue;
-            sum += f.head_position;
-            forward_sum += f.head_rotation * Vector3.forward;
-            n += 1;
-        }
-        if (n == 0)
-            return;
-        Vector3 coach = sum / n;
-        Vector3 forward = Vector3.ProjectOnPlane(forward_sum, Vector3.up).normalized;
-        Vector3 right = Vector3.Cross(Vector3.up, forward);
         // Stand on the side away from the paddle arm.
+        Vector3 forward, right;
+        Vector3 coach = GhostVisuals.coach_stance(clip, loop_start, loop_end, out forward, out right);
         float side = (clip.left_handed ? 1f : -1f);
-        Vector3 spot = coach + stand_offset * side * right;
-        spot.y = 0.005f;                      // Table origin is on the floor.
-        stand_marker.position = TableSpace.to_world(table, spot);
-        stand_marker.rotation = table.rotation;
+        GhostVisuals.place_on_floor(stand_marker, table, coach + stand_offset * side * right);
     }
 
     void build_ghost() {
-        Material ghost = Resources.Load<Material>("GhostCoach/ghost");
-        Material ghost_ball = Resources.Load<Material>("GhostCoach/ghost_ball");
-        Material marker = Resources.Load<Material>("GhostCoach/stand_marker");
+        Material ghost = GhostVisuals.material("ghost");
+        Material ghost_ball = GhostVisuals.material("ghost_ball");
 
         ghost_root = new GameObject("CoachGhost visuals").transform;
-        ghost_paddle = copy_meshes(play.paddle_hand.held_paddle.transform, "ghost paddle", ghost);
-        ghost_robot_paddle = copy_meshes(play.robot.paddle.transform, "ghost robot paddle", ghost);
-        head = primitive(PrimitiveType.Sphere, "ghost head", ghost);
+        ghost_paddle = GhostVisuals.copy_meshes(play.paddle_hand.held_paddle.transform, "ghost paddle", ghost, ghost_root);
+        ghost_robot_paddle = GhostVisuals.copy_meshes(play.robot.paddle.transform, "ghost robot paddle", ghost, ghost_root);
+        head = GhostVisuals.primitive(PrimitiveType.Sphere, "ghost head", ghost, ghost_root);
         head.localScale = 0.2f * Vector3.one;
-        torso = primitive(PrimitiveType.Capsule, "ghost torso", ghost);
-        arm = primitive(PrimitiveType.Cylinder, "ghost arm", ghost);
-        ball = primitive(PrimitiveType.Sphere, "ghost ball", ghost_ball);
+        torso = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost torso", ghost, ghost_root);
+        arm = GhostVisuals.primitive(PrimitiveType.Cylinder, "ghost arm", ghost, ghost_root);
+        ball = GhostVisuals.primitive(PrimitiveType.Sphere, "ghost ball", ghost_ball, ghost_root);
         float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
         ball.localScale = 2f * ball_radius * Vector3.one;
-        stand_marker = primitive(PrimitiveType.Cylinder, "stand here marker", marker);
-        stand_marker.localScale = new Vector3(0.5f, 0.003f, 0.5f);
-    }
-
-    Transform primitive(PrimitiveType type, string name, Material m) {
-        GameObject g = GameObject.CreatePrimitive(type);
-        g.name = name;
-        Destroy(g.GetComponent<Collider>());   // Must not touch the ball or menus.
-        g.GetComponent<MeshRenderer>().sharedMaterial = m;
-        g.transform.SetParent(ghost_root, false);
-        return g.transform;
-    }
-
-    // Copy only the visible meshes of a paddle, not its colliders or
-    // scripts, so the ghost cannot hit the ball.
-    Transform copy_meshes(Transform source, string name, Material m) {
-        Transform copy = new GameObject(name).transform;
-        copy.SetParent(ghost_root, false);
-        Quaternion inverse = Quaternion.Inverse(source.rotation);
-        foreach (MeshRenderer r in source.GetComponentsInChildren<MeshRenderer>()) {
-            MeshFilter mf = r.GetComponent<MeshFilter>();
-            if (!r.enabled || mf == null || mf.sharedMesh == null)
-                continue;
-            GameObject g = new GameObject(r.name);
-            g.transform.SetParent(copy, false);
-            g.transform.localPosition = inverse * (r.transform.position - source.position);
-            g.transform.localRotation = inverse * r.transform.rotation;
-            g.transform.localScale = r.transform.lossyScale;    // Copy root is not scaled.
-            g.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
-            g.AddComponent<MeshRenderer>().sharedMaterial = m;
-        }
-        return copy;
+        stand_marker = GhostVisuals.stand_marker("stand here marker", ghost_root);
     }
 }

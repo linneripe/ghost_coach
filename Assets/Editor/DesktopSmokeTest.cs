@@ -19,6 +19,7 @@ public static class DesktopSmokeTest {
     static int haptic_count_before;
     static Vector3 ghost_paddle_start;
     static float ghost_time_start;
+    static int free_haptic_before;
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -117,8 +118,10 @@ public static class DesktopSmokeTest {
             next_phase();
         }
         else if (phase == 5 && t > 0.5f) {
-            // Move the paddle during the recording so the replay moves.
+            // Move the paddle during the recording so the replay moves, and
+            // mark a ball contact so the clip has a stroke to compare with.
             rig.set_pointer(new Vector2(0.3f, 0.6f));
+            play.player_paddle_hit(play.ball_in_play);
             next_phase();
         }
         else if (phase == 6 && t > 0.5f) {
@@ -158,6 +161,29 @@ public static class DesktopSmokeTest {
                 check(d > 0.05f, "ghost paddle replays recorded motion, moved " + d.ToString("F2") + " m");
                 save_screenshot(gp.transform.position, "Logs/smoke_coach_phase.png");
             }
+            int contacts = coach.coach_clip.contact_times().Count;
+            check(contacts >= 1, "recorded clip has ball contacts (" + contacts + ")");
+
+            coach.OnGhostTogglePhase();
+            check(coach.phase == GhostCoach.Phase.Path && !coach.coach_ghost.showing
+                  && coach.path_guide.showing, "path phase hides coach and shows path");
+            check(coach.path_guide.coach_path_points > 10,
+                  "coach paddle path drawn with " + coach.path_guide.coach_path_points + " points");
+            free_haptic_before = rig.free_haptic_count;
+            // Simulate the player hitting the ball.
+            play.player_paddle_hit(play.ball_in_play);
+            next_phase();
+        }
+        else if (phase == 8 && t > 0.6f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            StrokeScore sc = coach.path_guide.last_score;
+            check(sc != null && sc.score >= 0 && sc.score <= 100 && sc.tip.Length > 0,
+                  "stroke scored " + (sc == null ? "none" : sc.score + " \"" + sc.tip + "\""));
+            check(play.billboard.text.StartsWith("Score"), "score shown on billboard");
+            check(rig.free_haptic_count > free_haptic_before, "score vibration in free hand");
+            GameObject line = GameObject.Find("coach paddle path");
+            if (line != null)
+                save_screenshot(line.GetComponent<LineRenderer>().GetPosition(0), "Logs/smoke_path_phase.png");
             finish();
         }
     }

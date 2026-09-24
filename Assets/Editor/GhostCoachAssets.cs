@@ -17,6 +17,7 @@ public static class GhostCoachAssets {
         create_fade_material("ghost", new Color(0.45f, 0.85f, 1f, 0.35f));
         create_fade_material("ghost_ball", new Color(1f, 1f, 1f, 0.8f));
         create_fade_material("stand_marker", new Color(0.3f, 1f, 0.45f, 0.5f));
+        create_fade_material("player_path", new Color(1f, 0.55f, 0.15f, 0.85f));
         AssetDatabase.SaveAssets();
         Debug.Log("GhostCoach materials created in " + folder);
     }

@@ -5,7 +5,8 @@ using UnityEngine;
 //     position while the player stands beside it, facing the same way,
 //     and watches.
 //   Phase 2 Path: the player plays in the hitting position with the
-//     coach's paddle path shown as support, and gets a score per stroke.
+//     coach's paddle path shown as support, and gets a score and one tip
+//     per stroke (PathGuide, StrokeCompare).
 // The ball is always in play.  The player switches phase with a button
 // (right controller A, P on the keyboard).  The right controller B button
 // (K on the keyboard) starts and stops recording a coach clip.  Clicking
@@ -21,6 +22,7 @@ public class GhostCoach : MonoBehaviour {
     public Play play;
     public MotionRecorder recorder;
     public CoachGhost coach_ghost;
+    public PathGuide path_guide;
     public Phase phase = Phase.Coach;
     public MotionClip coach_clip;
 
@@ -45,10 +47,18 @@ public class GhostCoach : MonoBehaviour {
         ghost.play = play;
         ghost.table = table.transform;
 
+        PathGuide guide = g.AddComponent<PathGuide>();
+        guide.enabled = false;            // Hook up references before OnEnable.
+        guide.play = play;
+        guide.table = table.transform;
+        guide.enabled = true;
+
         GhostCoach coach = g.AddComponent<GhostCoach>();
         coach.play = play;
         coach.recorder = recorder;
         coach.coach_ghost = ghost;
+        coach.path_guide = guide;
+        guide.stroke_scored += coach.stroke_scored;
     }
 
     void Start() {
@@ -62,12 +72,12 @@ public class GhostCoach : MonoBehaviour {
     public void set_phase(Phase p) {
         phase = p;
         update_ghost();
-        if (phase == Phase.Coach && coach_clip == null)
-            show_message("Phase 1: No coach recorded yet\nPress B to record one");
+        if (coach_clip == null)
+            show_message("Ingen coach inspelad än\nTryck B för att spela in");
         else
             show_message(phase == Phase.Coach
-                         ? "Phase 1: Watch the coach\nStand on the green marker"
-                         : "Phase 2: Your turn\nFollow the coach's path");
+                         ? "Fas 1: Titta på coachen\nStå på den gröna markeringen"
+                         : "Fas 2: Din tur\nStå på markeringen, följ banan");
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
     }
@@ -76,32 +86,50 @@ public class GhostCoach : MonoBehaviour {
         if (!recorder.recording) {
             recorder.start_recording();
             coach_ghost.hide();       // Record live play, not the replay.
-            show_message("Recording coach...\nPress B again to stop");
+            show_message("Spelar in coach...\nTryck B igen för att sluta");
             play.paddle_hand.wand.haptic_pulses(1, 0.1f, 0.8f, 0f);
         } else {
             MotionClip c = recorder.stop_recording();
             if (c != null) {
                 coach_clip = c;
-                show_message("Saved " + c.name + "\n" + c.contact_times().Count + " strokes, "
+                show_message("Sparade " + c.name + "\n" + c.contact_times().Count + " slag, "
                              + c.duration.ToString("F0") + " s");
             } else
-                show_message("Nothing recorded");
+                show_message("Inget inspelat");
             play.paddle_hand.wand.haptic_pulses(3, 0.04f, 0.8f, 0.06f);
             update_ghost();
         }
     }
 
-    // The coach ghost shows only in phase 1 and not while recording.
+    // The coach ghost shows only in phase 1 and the path only in phase 2,
+    // neither while recording.
     void update_ghost() {
-        if (phase == Phase.Coach && coach_clip != null && !recorder.recording)
+        bool live = (coach_clip != null && !recorder.recording);
+        if (live && phase == Phase.Coach)
             coach_ghost.show(coach_clip);
         else
             coach_ghost.hide();
+        if (live && phase == Phase.Path)
+            path_guide.show(coach_clip);
+        else
+            path_guide.hide();
+    }
+
+    // Phase 2 feedback after each stroke: the score and one tip as short
+    // text, and a vibration in the free hand so it does not mix with the
+    // ball hit pulse in the paddle hand.  One long pulse means a good
+    // stroke, two short pulses mean look at the tip.
+    public void stroke_scored(StrokeScore s) {
+        show_message("Score " + s.score + "\n" + s.tip);
+        if (s.score >= StrokeCompare.good_score)
+            play.free_hand.wand.haptic_pulses(1, 0.15f, 0.6f, 0f);
+        else
+            play.free_hand.wand.haptic_pulses(2, 0.05f, 0.8f, 0.08f);
     }
 
     public void change_speed() {
         float s = coach_ghost.next_speed();
-        show_message("Coach speed " + Mathf.RoundToInt(100f * s) + "%");
+        show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
     }
 
     void show_message(string text) {
