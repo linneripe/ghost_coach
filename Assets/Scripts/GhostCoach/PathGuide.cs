@@ -30,6 +30,11 @@ public class PathGuide : MonoBehaviour {
         get { return root != null && root.gameObject.activeSelf; }
     }
 
+    // Hitting position where the coach stood, on the floor, world coordinates.
+    public Vector3 player_spot {
+        get { return stand_marker.position; }
+    }
+
     public int coach_path_points {
         get { return (coach_line != null ? coach_line.positionCount : 0); }
     }

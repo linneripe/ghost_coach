@@ -121,6 +121,19 @@ public class GhostCoach : MonoBehaviour {
             path_guide.show(coach_clip);
         else
             path_guide.hide();
+
+        // Without a headset, move the view to where the player should stand.
+        // In phase 1 turn halfway toward the coach, who is beside the player
+        // and would be outside a flat screen's field of view.
+        if (DesktopRig.active != null && live) {
+            Vector3 forward = table.transform.forward;
+            if (phase == Phase.Coach) {
+                Vector3 to_coach = Vector3.ProjectOnPlane(coach_ghost.coach_position - coach_ghost.player_spot, Vector3.up);
+                forward = (forward + to_coach.normalized).normalized;
+                DesktopRig.active.stand_at(coach_ghost.player_spot, forward);
+            } else
+                DesktopRig.active.stand_at(path_guide.player_spot, forward);
+        }
     }
 
     // Phase 2 feedback after each stroke: the score and one tip as short
