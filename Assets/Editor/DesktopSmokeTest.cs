@@ -192,6 +192,23 @@ public static class DesktopSmokeTest {
             GameObject line = GameObject.Find("coach paddle path");
             if (line != null)
                 save_screenshot(line.GetComponent<LineRenderer>().GetPosition(0), "Logs/smoke_path_phase.png");
+            // Switch to left handed in the settings menu.
+            DesktopRig.set_left_handed(play.settings, true);
+            next_phase();
+        }
+        else if (phase == 9 && t > 0.2f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(play.paddle_hand.wand.left, "left handed chosen in settings");
+            check(coach.coach_clip.left_handed && !coach.recorded_clip.left_handed,
+                  "right handed coach mirrored for a left handed player");
+            check(coach.path_guide.showing, "path still shown after switching hand");
+            DesktopRig.set_left_handed(play.settings, false);
+            next_phase();
+        }
+        else if (phase == 10 && t > 0.2f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(!play.paddle_hand.wand.left && coach.coach_clip == coach.recorded_clip,
+                  "back to right handed, coach not mirrored");
             finish();
         }
     }

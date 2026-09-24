@@ -35,10 +35,8 @@ public static class MockCoach {
 
     // Build the clip for the scene's table.
     public static MotionClip forehand_drive(Table table, float ball_radius, int strokes = 5) {
-        Transform top = table.table_top.transform;
-        Vector3 center = TableSpace.to_table(table.transform, top.position);
-        float top_y = center.y + 0.5f * top.lossyScale.y;
-        center.y = 0f;
+        float top_y;
+        Vector3 center = TableSpace.center(table, out top_y);
         return forehand_drive(center, top_y, 0.5f * table.length, ball_radius, strokes);
     }
 
