@@ -34,6 +34,7 @@ public class DesktopRig : MonoBehaviour {
     // set_pointer() is used, e.g. by automated tests.
     public Vector2 pointer = new Vector2(0.6f, 0.4f);
     bool pointer_fixed = false;
+    bool room_hidden = false;
 
     float look_speed = 0.15f;         // Degrees per pixel of mouse motion.
     float move_speed = 1.5f;          // Meters per second.
@@ -119,8 +120,24 @@ public class DesktopRig : MonoBehaviour {
             buttons.OnRobotServe();
     }
 
+    // Move the head to stand at a floor position facing a direction, e.g.
+    // on the phase's stand marker.  In VR the player walks there.
+    public void stand_at(Vector3 world_position, Vector3 world_forward) {
+        Vector3 p = tracking_space.InverseTransformPoint(world_position);
+        head_position = new Vector3(p.x, 1.6f, p.z);
+        Vector3 f = tracking_space.InverseTransformDirection(world_forward);
+        yaw = Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+        pitch = 20f;
+    }
+
     void Update() {
         float delta_t = Time.deltaTime;
+        if (!room_hidden) {
+            // Passthrough shows nothing in the editor, only a black
+            // background, so show the virtual room instead.
+            room_hidden = true;
+            play.enable_show_room(false);
+        }
         handle_input(delta_t);
         if (toss_time >= 0f) {
             toss_time += delta_t;

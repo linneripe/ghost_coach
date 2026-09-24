@@ -70,6 +70,14 @@ public static class DesktopSmokeTest {
         if (phase == 0 && t > 0.5f) {
             check(rig != null, "desktop rig created when no headset");
             if (rig == null) { finish(); return; }
+            save_camera_view(rig.head_camera, "Logs/smoke_player_view.png");
+            GhostCoach gc = Object.FindFirstObjectByType<GhostCoach>();
+            if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
+                check(gc.coach_ghost.showing, "mock coach shown when nothing is recorded");
+                GameObject mp = GameObject.Find("ghost paddle");
+                if (mp != null)
+                    save_screenshot(mp.transform.position, "Logs/smoke_mock_coach.png");
+            }
             rig.set_pointer(new Vector2(0.5f, 0.5f));
             next_phase();
         }
@@ -209,6 +217,23 @@ public static class DesktopSmokeTest {
         System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
         Object.DestroyImmediate(cam.gameObject);
         Debug.Log("DesktopSmokeTest saved screenshot " + path);
+    }
+
+    // What the player sees: render the head camera itself.
+    static void save_camera_view(Camera cam, string path) {
+        RenderTexture rt = new RenderTexture(1280, 720, 24);
+        RenderTexture old = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();
+        cam.targetTexture = old;
+        RenderTexture.active = rt;
+        Texture2D image = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        image.Apply();
+        RenderTexture.active = null;
+        System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
+        Debug.Log("DesktopSmokeTest saved screenshot " + path + " from " + cam.name
+                  + " clear " + cam.clearFlags + " background " + cam.backgroundColor);
     }
 
     static void next_phase() {

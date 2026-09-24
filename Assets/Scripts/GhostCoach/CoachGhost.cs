@@ -18,6 +18,11 @@ public class CoachGhost : MonoBehaviour {
     public float lead_time = 1.2f;          // Seconds shown before first contact.
     public float follow_time = 0.8f;        // Seconds shown after last contact.
     public float stand_offset = 0.9f;       // Meters beside the coach for the player.
+    // Which side of the coach the player watches from.  On the free hand
+    // side the coach's body can hide the paddle arm; on the paddle side
+    // the arm is in view.  Standing a little behind helps see both.
+    public bool stand_on_paddle_side = false;
+    public float stand_behind = 0f;         // Meters behind the coach.
 
     MotionClip clip;
     float playback_time, loop_start, loop_end;
@@ -31,6 +36,16 @@ public class CoachGhost : MonoBehaviour {
 
     public float time {
         get { return playback_time; }
+    }
+
+    // Where the coach is now, world coordinates.
+    public Vector3 coach_position {
+        get { return head.position; }
+    }
+
+    // Where the player should stand to watch, on the floor, world coordinates.
+    public Vector3 player_spot {
+        get { return stand_marker.position; }
     }
 
     public void show(MotionClip c) {
@@ -120,11 +135,12 @@ public class CoachGhost : MonoBehaviour {
     }
 
     void place_stand_marker() {
-        // Stand on the side away from the paddle arm.
         Vector3 forward, right;
         Vector3 coach = GhostVisuals.coach_stance(clip, loop_start, loop_end, out forward, out right);
-        float side = (clip.left_handed ? 1f : -1f);
-        GhostVisuals.place_on_floor(stand_marker, table, coach + stand_offset * side * right);
+        float paddle_side = (clip.left_handed ? -1f : 1f);
+        float side = (stand_on_paddle_side ? paddle_side : -paddle_side);
+        GhostVisuals.place_on_floor(stand_marker, table,
+                                    coach + stand_offset * side * right - stand_behind * forward);
     }
 
     void build_ghost() {

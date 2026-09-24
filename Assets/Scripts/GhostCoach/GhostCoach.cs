@@ -23,6 +23,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionRecorder recorder;
     public CoachGhost coach_ghost;
     public PathGuide path_guide;
+    public Table table;
     public Phase phase = Phase.Coach;
     public MotionClip coach_clip;
 
@@ -58,14 +59,21 @@ public class GhostCoach : MonoBehaviour {
         coach.recorder = recorder;
         coach.coach_ghost = ghost;
         coach.path_guide = guide;
+        coach.table = table;
         guide.stroke_scored += coach.stroke_scored;
     }
 
     void Start() {
         coach_clip = MotionClip.load_latest();
-        if (coach_clip != null)
-            Debug.Log("GhostCoach loaded coach clip " + coach_clip.name + ", "
-                      + coach_clip.contact_times().Count + " strokes");
+        if (coach_clip == null) {
+            // No recording yet: use a made-up forehand drive so both phases
+            // can be tried.  Recording a real coach replaces it.
+            float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
+            coach_clip = MockCoach.forehand_drive(table, ball_radius);
+            show_message("Demo-coach (påhittad forehand)\nA: byt fas   B: spela in riktig coach");
+        }
+        Debug.Log("GhostCoach coach clip " + coach_clip.name + " (" + coach_clip.source + "), "
+                  + coach_clip.contact_times().Count + " strokes");
         update_ghost();
     }
 
@@ -113,6 +121,19 @@ public class GhostCoach : MonoBehaviour {
             path_guide.show(coach_clip);
         else
             path_guide.hide();
+
+        // Without a headset, move the view to where the player should stand.
+        // In phase 1 turn halfway toward the coach, who is beside the player
+        // and would be outside a flat screen's field of view.
+        if (DesktopRig.active != null && live) {
+            Vector3 forward = table.transform.forward;
+            if (phase == Phase.Coach) {
+                Vector3 to_coach = Vector3.ProjectOnPlane(coach_ghost.coach_position - coach_ghost.player_spot, Vector3.up);
+                forward = (forward + to_coach.normalized).normalized;
+                DesktopRig.active.stand_at(coach_ghost.player_spot, forward);
+            } else
+                DesktopRig.active.stand_at(path_guide.player_spot, forward);
+        }
     }
 
     // Phase 2 feedback after each stroke: the score and one tip as short
