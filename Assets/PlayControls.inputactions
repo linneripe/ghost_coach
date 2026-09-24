@@ -58,6 +58,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "GhostSpeed",
+                    "type": "Button",
+                    "id": "487adf54-4e7d-4c8a-afa8-d96a91170c7c",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -146,6 +155,17 @@
                     "processors": "",
                     "groups": "PlayControls",
                     "action": "GhostRecord",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "1302aa24-56ca-4d35-8825-8723c3007aed",
+                    "path": "<XRController>{RightHand}/thumbstickClicked",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "PlayControls",
+                    "action": "GhostSpeed",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

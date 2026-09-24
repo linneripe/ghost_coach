@@ -17,6 +17,8 @@ public static class DesktopSmokeTest {
     static Ball tossed_ball;
     static float toss_max_height;
     static int haptic_count_before;
+    static Vector3 ghost_paddle_start;
+    static float ghost_time_start;
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -115,6 +117,11 @@ public static class DesktopSmokeTest {
             next_phase();
         }
         else if (phase == 5 && t > 0.5f) {
+            // Move the paddle during the recording so the replay moves.
+            rig.set_pointer(new Vector2(0.3f, 0.6f));
+            next_phase();
+        }
+        else if (phase == 6 && t > 0.5f) {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             check(rig.paddle_haptic_count > haptic_count_before,
                   "haptic pulses shown in desktop mode (" + (rig.paddle_haptic_count - haptic_count_before) + ")");
@@ -122,15 +129,60 @@ public static class DesktopSmokeTest {
             MotionClip c = coach.coach_clip;
             check(!coach.recorder.recording && c != null && c.frames.Count > 10,
                   "recording saved " + (c == null ? 0 : c.frames.Count) + " frames");
-            if (c != null) {
-                MotionFrame m = c.sample(0.5f * c.duration);
-                check(m != null && m.head_position.y > 0.5f,
-                      "clip head height in table space " + (m == null ? 0f : m.head_position.y).ToString("F2") + " m");
-                // Remove the test clip so it is not loaded as the coach.
-                System.IO.File.Delete(System.IO.Path.Combine(MotionClip.clips_directory(), c.name + ".json"));
+            if (c == null) { finish(); return; }
+            MotionFrame m = c.sample(0.5f * c.duration);
+            check(m.head_position.y > 0.5f,
+                  "clip head height in table space " + m.head_position.y.ToString("F2") + " m");
+            // Remove the test clip so it is not loaded as the coach later.
+            System.IO.File.Delete(System.IO.Path.Combine(MotionClip.clips_directory(), c.name + ".json"));
+
+            check(!coach.coach_ghost.showing, "coach ghost hidden in path phase");
+            coach.OnGhostTogglePhase();
+            check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing,
+                  "coach ghost shown in coach phase");
+            coach.coach_ghost.speed = 1f;
+            GameObject gp = GameObject.Find("ghost paddle");
+            check(gp != null, "ghost paddle created");
+            if (gp != null)
+                ghost_paddle_start = gp.transform.position;
+            ghost_time_start = coach.coach_ghost.time;
+            check(GameObject.Find("stand here marker") != null, "stand here marker created");
+            next_phase();
+        }
+        else if (phase == 7 && t > 0.8f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(coach.coach_ghost.time != ghost_time_start, "coach replay time advanced");
+            GameObject gp = GameObject.Find("ghost paddle");
+            if (gp != null) {
+                float d = (gp.transform.position - ghost_paddle_start).magnitude;
+                check(d > 0.05f, "ghost paddle replays recorded motion, moved " + d.ToString("F2") + " m");
+                save_screenshot(gp.transform.position, "Logs/smoke_coach_phase.png");
             }
             finish();
         }
+    }
+
+    // Render a view from beside and behind a point, for checking visuals
+    // by eye.  Logs/ is not in git.
+    static void save_screenshot(Vector3 target, string path) {
+        Camera cam = new GameObject("smoke test camera").AddComponent<Camera>();
+        Vector3 table_center = Object.FindFirstObjectByType<Table>().transform.position;
+        Vector3 away = target - table_center;
+        away.y = 0f;
+        cam.transform.position = target + 1.8f * away.normalized + new Vector3(1.2f, 0.6f, 0f);
+        cam.transform.LookAt(target - 0.3f * Vector3.up);
+        cam.fieldOfView = 70f;
+        RenderTexture rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        Texture2D image = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        image.Apply();
+        RenderTexture.active = null;
+        System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
+        Object.DestroyImmediate(cam.gameObject);
+        Debug.Log("DesktopSmokeTest saved screenshot " + path);
     }
 
     static void next_phase() {

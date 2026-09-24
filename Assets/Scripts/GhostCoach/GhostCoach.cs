@@ -8,7 +8,9 @@ using UnityEngine;
 //     coach's paddle path shown as support, and gets a score per stroke.
 // The ball is always in play.  The player switches phase with a button
 // (right controller A, P on the keyboard).  The right controller B button
-// (K on the keyboard) starts and stops recording a coach clip.
+// (K on the keyboard) starts and stops recording a coach clip.  Clicking
+// the right thumbstick (L on the keyboard) changes the coach's playback
+// speed.
 //
 // Added at run time to the object holding the PlayerInput so it receives
 // the On<Action> messages from PlayControls.inputactions.
@@ -18,6 +20,7 @@ public class GhostCoach : MonoBehaviour {
 
     public Play play;
     public MotionRecorder recorder;
+    public CoachGhost coach_ghost;
     public Phase phase = Phase.Coach;
     public MotionClip coach_clip;
 
@@ -38,9 +41,14 @@ public class GhostCoach : MonoBehaviour {
         recorder.head = (head != null ? head.transform : null);
         recorder.enabled = true;
 
+        CoachGhost ghost = g.AddComponent<CoachGhost>();
+        ghost.play = play;
+        ghost.table = table.transform;
+
         GhostCoach coach = g.AddComponent<GhostCoach>();
         coach.play = play;
         coach.recorder = recorder;
+        coach.coach_ghost = ghost;
     }
 
     void Start() {
@@ -48,13 +56,18 @@ public class GhostCoach : MonoBehaviour {
         if (coach_clip != null)
             Debug.Log("GhostCoach loaded coach clip " + coach_clip.name + ", "
                       + coach_clip.contact_times().Count + " strokes");
+        update_ghost();
     }
 
     public void set_phase(Phase p) {
         phase = p;
-        show_message(phase == Phase.Coach
-                     ? "Phase 1: Watch the coach\nStand beside the table"
-                     : "Phase 2: Your turn\nFollow the coach's path");
+        update_ghost();
+        if (phase == Phase.Coach && coach_clip == null)
+            show_message("Phase 1: No coach recorded yet\nPress B to record one");
+        else
+            show_message(phase == Phase.Coach
+                         ? "Phase 1: Watch the coach\nStand on the green marker"
+                         : "Phase 2: Your turn\nFollow the coach's path");
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
     }
@@ -62,6 +75,7 @@ public class GhostCoach : MonoBehaviour {
     public void toggle_recording() {
         if (!recorder.recording) {
             recorder.start_recording();
+            coach_ghost.hide();       // Record live play, not the replay.
             show_message("Recording coach...\nPress B again to stop");
             play.paddle_hand.wand.haptic_pulses(1, 0.1f, 0.8f, 0f);
         } else {
@@ -73,7 +87,21 @@ public class GhostCoach : MonoBehaviour {
             } else
                 show_message("Nothing recorded");
             play.paddle_hand.wand.haptic_pulses(3, 0.04f, 0.8f, 0.06f);
+            update_ghost();
         }
+    }
+
+    // The coach ghost shows only in phase 1 and not while recording.
+    void update_ghost() {
+        if (phase == Phase.Coach && coach_clip != null && !recorder.recording)
+            coach_ghost.show(coach_clip);
+        else
+            coach_ghost.hide();
+    }
+
+    public void change_speed() {
+        float s = coach_ghost.next_speed();
+        show_message("Coach speed " + Mathf.RoundToInt(100f * s) + "%");
     }
 
     void show_message(string text) {
@@ -89,5 +117,9 @@ public class GhostCoach : MonoBehaviour {
 
     public void OnGhostRecord() {
         toggle_recording();
+    }
+
+    public void OnGhostSpeed() {
+        change_speed();
     }
 }
