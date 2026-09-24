@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 // Training flow decided by the team:
 //   Phase 1 Coach: the ghost coach plays at the table in the hitting
@@ -28,6 +29,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionClip recorded_clip;     // As recorded (or the mock coach).
     public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
     bool player_left_handed;
+    bool bindings_set = false;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create() {
@@ -84,6 +86,8 @@ public class GhostCoach : MonoBehaviour {
     // movement in their head.
     void set_coach(MotionClip c) {
         recorded_clip = c;
+        if (player_left_handed != play.paddle_hand.wand.left || !bindings_set)
+            mirror_controller_buttons(play.paddle_hand.wand.left);
         player_left_handed = play.paddle_hand.wand.left;
         if (c != null && c.left_handed != player_left_handed) {
             float top_y;
@@ -91,6 +95,32 @@ public class GhostCoach : MonoBehaviour {
         } else
             coach_clip = c;
         update_ghost();
+    }
+
+    // The button bindings in PlayControls.inputactions assume a right
+    // handed player: ball and serve on the left (free) hand.  For a left
+    // handed player swap every left and right hand binding so the same
+    // jobs stay on the same hand, except the menu button, which only the
+    // left controller has.
+    void mirror_controller_buttons(bool left_handed) {
+        bindings_set = true;
+        PlayerInput input = GetComponent<PlayerInput>();
+        if (input == null || input.actions == null)
+            return;
+        foreach (InputAction action in input.actions) {
+            for (int i = 0 ; i < action.bindings.Count ; ++i) {
+                string path = action.bindings[i].path;
+                bool handed = (path.Contains("{LeftHand}") || path.Contains("{RightHand}"));
+                if (!handed || path.EndsWith("/start"))
+                    continue;
+                if (left_handed)
+                    action.ApplyBindingOverride(i, path.Contains("{LeftHand}")
+                                                ? path.Replace("{LeftHand}", "{RightHand}")
+                                                : path.Replace("{RightHand}", "{LeftHand}"));
+                else
+                    action.RemoveBindingOverride(i);
+            }
+        }
     }
 
     // The player can switch hand in the settings menu at any time.

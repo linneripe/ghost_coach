@@ -202,6 +202,11 @@ public static class DesktopSmokeTest {
             check(coach.coach_clip.left_handed && !coach.recorded_clip.left_handed,
                   "right handed coach mirrored for a left handed player");
             check(coach.path_guide.showing, "path still shown after switching hand");
+            check(binding(coach, "HoldBall").Contains("{RightHand}") && binding(coach, "RobotServe").Contains("{RightHand}"),
+                  "left handed: ball and serve buttons on the right (free) hand, " + binding(coach, "HoldBall"));
+            check(binding(coach, "GhostTogglePhase").Contains("{LeftHand}"),
+                  "left handed: phase button mirrored to the left hand");
+            check(binding(coach, "ShowSettings").Contains("{LeftHand}"), "menu button stays on the left controller");
             DesktopRig.set_left_handed(play.settings, false);
             next_phase();
         }
@@ -209,6 +214,8 @@ public static class DesktopSmokeTest {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             check(!play.paddle_hand.wand.left && coach.coach_clip == coach.recorded_clip,
                   "back to right handed, coach not mirrored");
+            check(binding(coach, "HoldBall").Contains("{LeftHand}") && binding(coach, "GhostTogglePhase").Contains("{RightHand}"),
+                  "right handed: buttons back to normal");
             finish();
         }
     }
@@ -251,6 +258,12 @@ public static class DesktopSmokeTest {
         System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
         Debug.Log("DesktopSmokeTest saved screenshot " + path + " from " + cam.name
                   + " clear " + cam.clearFlags + " background " + cam.backgroundColor);
+    }
+
+    // Effective path of an action's first binding, including overrides.
+    static string binding(GhostCoach coach, string action) {
+        var input = coach.GetComponent<UnityEngine.InputSystem.PlayerInput>();
+        return input.actions.FindAction(action).bindings[0].effectivePath;
     }
 
     static void next_phase() {
