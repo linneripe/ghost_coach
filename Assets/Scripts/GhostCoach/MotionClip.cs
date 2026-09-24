@@ -56,6 +56,20 @@ public class MotionClip {
         return MotionFrame.lerp(a, b, f);
     }
 
+    // Copy mirrored left to right about the plane x = center_x in table
+    // coordinates, so a right handed coach becomes a left handed one.
+    public MotionClip mirrored(float center_x) {
+        MotionClip m = new MotionClip();
+        m.name = name + "_mirrored";
+        m.source = source;
+        m.left_handed = !left_handed;
+        m.recorded = recorded;
+        foreach (MotionFrame f in frames)
+            m.frames.Add(f.mirrored(center_x));
+        m.events.AddRange(events);
+        return m;
+    }
+
     public static string clips_directory() {
         return Path.Combine(Application.persistentDataPath, "GhostCoach", "clips");
     }
@@ -106,6 +120,30 @@ public class MotionFrame {
     public Vector3 robot_paddle_position;  // Opponent, so a rally can be replayed.
     public Quaternion robot_paddle_rotation;
 
+    public MotionFrame mirrored(float center_x) {
+        MotionFrame m = new MotionFrame();
+        m.t = t;
+        m.head_position = mirror(head_position, center_x);
+        m.head_rotation = mirror(head_rotation);
+        m.paddle_position = mirror(paddle_position, center_x);
+        m.paddle_rotation = mirror(paddle_rotation);
+        m.ball_in_play = ball_in_play;
+        m.ball_position = mirror(ball_position, center_x);
+        m.robot_paddle_position = mirror(robot_paddle_position, center_x);
+        m.robot_paddle_rotation = mirror(robot_paddle_rotation);
+        return m;
+    }
+
+    static Vector3 mirror(Vector3 p, float center_x) {
+        return new Vector3(2f * center_x - p.x, p.y, p.z);
+    }
+
+    // Rotation seen in a mirror across the x = 0 plane (same trick as the
+    // left handed grip in Grip.hand_to_paddle_motion).
+    static Quaternion mirror(Quaternion q) {
+        return new Quaternion(q.x, -q.y, -q.z, q.w);
+    }
+
     public static MotionFrame lerp(MotionFrame a, MotionFrame b, float f) {
         MotionFrame m = new MotionFrame();
         m.t = Mathf.Lerp(a.t, b.t, f);
@@ -144,5 +182,15 @@ public static class TableSpace {
 
     public static Quaternion to_world(Transform table, Quaternion table_rotation) {
         return table.rotation * table_rotation;
+    }
+
+    // Middle of the table surface projected to the floor, and the surface
+    // height, in table coordinates.
+    public static Vector3 center(Table table, out float top_y) {
+        Transform top = table.table_top.transform;
+        Vector3 c = to_table(table.transform, top.position);
+        top_y = c.y + 0.5f * top.lossyScale.y;
+        c.y = 0f;
+        return c;
     }
 }

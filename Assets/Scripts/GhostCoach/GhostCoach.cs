@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 // Training flow decided by the team:
 //   Phase 1 Coach: the ghost coach plays at the table in the hitting
@@ -25,7 +26,10 @@ public class GhostCoach : MonoBehaviour {
     public PathGuide path_guide;
     public Table table;
     public Phase phase = Phase.Coach;
-    public MotionClip coach_clip;
+    public MotionClip recorded_clip;     // As recorded (or the mock coach).
+    public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
+    bool player_left_handed;
+    bool bindings_set = false;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create() {
@@ -64,17 +68,67 @@ public class GhostCoach : MonoBehaviour {
     }
 
     void Start() {
-        coach_clip = MotionClip.load_latest();
-        if (coach_clip == null) {
+        MotionClip c = MotionClip.load_latest();
+        if (c == null) {
             // No recording yet: use a made-up forehand drive so both phases
             // can be tried.  Recording a real coach replaces it.
             float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
-            coach_clip = MockCoach.forehand_drive(table, ball_radius);
+            c = MockCoach.forehand_drive(table, ball_radius);
             show_message("Demo-coach (påhittad forehand)\nA: byt fas   B: spela in riktig coach");
         }
-        Debug.Log("GhostCoach coach clip " + coach_clip.name + " (" + coach_clip.source + "), "
-                  + coach_clip.contact_times().Count + " strokes");
+        Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
+                  + c.contact_times().Count + " strokes");
+        set_coach(c);
+    }
+
+    // Use a clip as the coach, mirrored when the coach played with the
+    // other hand than the player, so the player never has to mirror the
+    // movement in their head.
+    void set_coach(MotionClip c) {
+        recorded_clip = c;
+        if (player_left_handed != play.paddle_hand.wand.left || !bindings_set)
+            mirror_controller_buttons(play.paddle_hand.wand.left);
+        player_left_handed = play.paddle_hand.wand.left;
+        if (c != null && c.left_handed != player_left_handed) {
+            float top_y;
+            coach_clip = c.mirrored(TableSpace.center(table, out top_y).x);
+        } else
+            coach_clip = c;
         update_ghost();
+    }
+
+    // The button bindings in PlayControls.inputactions assume a right
+    // handed player: ball and serve on the left (free) hand.  For a left
+    // handed player swap every left and right hand binding so the same
+    // jobs stay on the same hand, except the menu button, which only the
+    // left controller has.
+    void mirror_controller_buttons(bool left_handed) {
+        bindings_set = true;
+        PlayerInput input = GetComponent<PlayerInput>();
+        if (input == null || input.actions == null)
+            return;
+        foreach (InputAction action in input.actions) {
+            for (int i = 0 ; i < action.bindings.Count ; ++i) {
+                string path = action.bindings[i].path;
+                bool handed = (path.Contains("{LeftHand}") || path.Contains("{RightHand}"));
+                if (!handed || path.EndsWith("/start"))
+                    continue;
+                if (left_handed)
+                    action.ApplyBindingOverride(i, path.Contains("{LeftHand}")
+                                                ? path.Replace("{LeftHand}", "{RightHand}")
+                                                : path.Replace("{RightHand}", "{LeftHand}"));
+                else
+                    action.RemoveBindingOverride(i);
+            }
+        }
+    }
+
+    // The player can switch hand in the settings menu at any time.
+    void Update() {
+        if (play.paddle_hand.wand.left != player_left_handed) {
+            set_coach(recorded_clip);
+            show_message(player_left_handed ? "Vänsterhänt: coachen spegelvänd" : "Högerhänt");
+        }
     }
 
     public void set_phase(Phase p) {
@@ -99,13 +153,14 @@ public class GhostCoach : MonoBehaviour {
         } else {
             MotionClip c = recorder.stop_recording();
             if (c != null) {
-                coach_clip = c;
+                set_coach(c);
                 show_message("Sparade " + c.name + "\n" + c.contact_times().Count + " slag, "
                              + c.duration.ToString("F0") + " s");
             } else
                 show_message("Inget inspelat");
             play.paddle_hand.wand.haptic_pulses(3, 0.04f, 0.8f, 0.06f);
-            update_ghost();
+            if (c == null)
+                update_ghost();
         }
     }
 

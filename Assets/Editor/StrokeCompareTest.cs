@@ -77,6 +77,21 @@ public static class StrokeCompareTest {
         check_value(lowest > 0.76f, "mock ball stays above the table surface, lowest m", lowest);
         check_value(f.head_position.y > 1.3f && f.head_position.z < -1.37f,
                     "mock coach head behind the end line, z", f.head_position.z);
+
+        // Left handed version: mirrored about the table center line.
+        MotionClip left = mock.mirrored(0f);
+        MotionFrame lf = left.sample(contacts[1]);
+        check_value(left.left_handed && Mathf.Abs(lf.paddle_position.x + f.paddle_position.x) < 1e-4f,
+                    "mirrored coach hits on the other side, x", lf.paddle_position.x);
+        StrokeScore mirrored_same = StrokeCompare.compare(left, contacts[0], left, contacts[2]);
+        check(mirrored_same.score == 100, "mirrored strokes still compare identically", mirrored_same);
+        Vector3 n = f.paddle_rotation * Vector3.back, ln = lf.paddle_rotation * Vector3.back;
+        check_value(Mathf.Abs(n.x + ln.x) < 1e-4f && Mathf.Abs(n.y - ln.y) < 1e-4f && Mathf.Abs(n.z - ln.z) < 1e-4f,
+                    "mirrored paddle face is the mirror image, normal x", ln.x);
+        MotionFrame back = left.mirrored(0f).sample(contacts[1]);
+        check_value((back.paddle_position - f.paddle_position).magnitude < 1e-4f
+                    && Quaternion.Angle(back.paddle_rotation, f.paddle_rotation) < 0.01f,
+                    "mirroring twice gives the original, error m", (back.paddle_position - f.paddle_position).magnitude);
     }
 
     static void check_value(bool ok, string what, float value) {
