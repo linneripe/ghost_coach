@@ -27,6 +27,7 @@ public class Play : MonoBehaviour {
     public Camera passthrough_camera;   // Used to hide skybox with pass-through video
     public PathTracer path_tracer;
     int track_countdown;
+    public System.Action<Ball> player_paddle_hit;  // GhostCoach recording and scoring.
     
     Play() {
         create_play_states ();
@@ -136,6 +137,8 @@ public class Play : MonoBehaviour {
             float return_time = (s == null ? 0f : s.contact_time - b.motion.time);
             report_speeds (b, bn, return_time);
             enable_markers();
+            if (player_paddle_hit != null)
+                player_paddle_hit(b);
 //	    report_imu_state();  // Only for SteamVR
         }
         if (bn.tag == "robot_paddle") {

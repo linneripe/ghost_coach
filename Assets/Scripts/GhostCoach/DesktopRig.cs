@@ -48,6 +48,11 @@ public class DesktopRig : MonoBehaviour {
     Vector3 paddle_hand_velocity, free_hand_velocity;
     bool have_poses = false;
 
+    // Haptic pulses are shown on screen since there is no controller to vibrate.
+    float paddle_haptic_until = -1f, free_haptic_until = -1f;
+    int paddle_haptic_count = 0, free_haptic_count = 0;
+    float haptic_min_show = 0.15f;    // Seconds, so short pulses are visible.
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create_if_no_headset() {
         if (Application.platform == RuntimePlatform.Android || XRSettings.isDeviceActive)
@@ -81,6 +86,18 @@ public class DesktopRig : MonoBehaviour {
         rotation = (paddle ? paddle_hand_rotation : free_hand_rotation);
         velocity = (paddle ? paddle_hand_velocity : free_hand_velocity);
         return have_poses;
+    }
+
+    // Called by Wand.haptic_pulse() when there is no XR controller.
+    public void show_haptic(bool left, float duration, float strength) {
+        float until = Time.time + Mathf.Max(duration, haptic_min_show);
+        if (left == play.paddle_hand.wand.left) {
+            paddle_haptic_until = until;
+            paddle_haptic_count += 1;
+        } else {
+            free_haptic_until = until;
+            free_haptic_count += 1;
+        }
     }
 
     public void set_pointer(Vector2 viewport_position) {
@@ -173,6 +190,13 @@ public class DesktopRig : MonoBehaviour {
         if (keys.rKey.wasPressedThisFrame) robot_serve();
         if (keys.tabKey.wasPressedThisFrame && buttons != null) buttons.OnShowSettings();
         if (keys.hKey.wasPressedThisFrame) show_help = !show_help;
+
+        // Same as right controller A and B buttons.
+        GhostCoach coach = FindFirstObjectByType<GhostCoach>();
+        if (coach != null) {
+            if (keys.pKey.wasPressedThisFrame) coach.OnGhostTogglePhase();
+            if (keys.kKey.wasPressedThisFrame) coach.OnGhostRecord();
+        }
     }
 
     void update_hands(float delta_t) {
@@ -242,6 +266,11 @@ public class DesktopRig : MonoBehaviour {
     }
 
     void OnGUI() {
+        float y = Screen.height - 40;
+        if (Time.time < paddle_haptic_until)
+            GUI.Box(new Rect(10, y, 260, 28), "Haptic: paddle hand (" + paddle_haptic_count + ")");
+        if (Time.time < free_haptic_until)
+            GUI.Box(new Rect(280, y, 260, 28), "Haptic: free hand (" + free_haptic_count + ")");
         if (!show_help) {
             GUI.Label(new Rect(10, 10, 300, 25), "H: help");
             return;
@@ -253,8 +282,9 @@ public class DesktopRig : MonoBehaviour {
             "Z/X: open/close face   C: forehand/backhand (" + (backhand ? "backhand" : "forehand") + ")\n" +
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
             "Tab: settings menu     Left click: press menu buttons\n" +
+            "P: coach/path phase    K: start/stop recording coach\n" +
             "H: hide help";
-        GUI.Box(new Rect(10, 10, 420, 125), "");
-        GUI.Label(new Rect(18, 14, 410, 120), help);
+        GUI.Box(new Rect(10, 10, 420, 140), "");
+        GUI.Label(new Rect(18, 14, 410, 135), help);
     }
 }

@@ -393,21 +393,32 @@ public class Wand : MonoBehaviour {
     }
     */
     
+    // Vibrate the hand controller.  Duration in seconds, strength 0-1.
     public void haptic_pulse(float duration, float strength) {
+	strength = Mathf.Clamp01(strength);
+	if (!have_device())
+	{
+	    // No headset: show the pulse on screen in desktop mode.
+	    if (DesktopRig.active != null)
+		DesktopRig.active.show_haptic(left, duration, strength);
+	    return;
+	}
+	HapticCapabilities caps;
+	if (device.TryGetHapticCapabilities(out caps) && caps.supportsImpulse)
+	    device.SendHapticImpulse(0, strength, duration);
     }
-    /*
-        var dev = device ();
-        if (dev == null)
-            return;
-        StartCoroutine (haptic_pulses (dev, duration, strength));
-        //dev.TriggerHapticPulse (durationMicroSeconds);
+
+    // Several pulses separated by gaps, e.g. as a feedback cue that feels
+    // different from the single pulse of a ball hit.
+    public void haptic_pulses(int count, float duration, float strength, float gap) {
+	StartCoroutine(pulse_sequence(count, duration, strength, gap));
     }
-    IEnumerator haptic_pulses(SteamVR_Controller.Device device, float duration, float strength) {
-        ushort pulse_microsec = (ushort) (3999 * strength); // Max pulse duration is 4 milliseconds.
-        for (float t = 0; t < duration; t += Time.deltaTime) {
-            device.TriggerHapticPulse (pulse_microsec);
-            yield return new WaitForSeconds(0.005f);  // Can only trigger pulse every 5 msec according to SteamVR docs.
-        }
+
+    IEnumerator pulse_sequence(int count, float duration, float strength, float gap) {
+	for (int i = 0 ; i < count ; ++i)
+	{
+	    haptic_pulse(duration, strength);
+	    yield return new WaitForSeconds(duration + gap);
+	}
     }
-    */
 }
