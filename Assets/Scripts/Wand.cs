@@ -76,11 +76,19 @@ public class Wand : MonoBehaviour {
 	position = velocity = angular_velocity = acceleration = Vector3.zero;
 	rotation = Quaternion.identity;
 
-	if (!have_device())
-	    return;
-
 	Vector3 p, v, a, av;
 	Quaternion r;
+	bool simulated = !have_device();
+	if (simulated)
+	{
+	    // No headset: mouse and keyboard hand motion in the editor.
+	    if (DesktopRig.active == null
+		|| !DesktopRig.active.hand_motion(left, out p, out r, out v))
+		return;
+	    av = a = Vector3.zero;
+	}
+	else
+	{
 	if (!device.TryGetFeatureValue(CommonUsages.devicePosition, out p))
 	    return;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceRotation, out r))
@@ -91,7 +99,8 @@ public class Wand : MonoBehaviour {
 	    return;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceAcceleration, out a))
 	    return;
-	
+	}
+
 #if old_steamvr
         int i = device_index();
         var compositor = OpenVR.Compositor;
@@ -168,8 +177,8 @@ public class Wand : MonoBehaviour {
 	  be advanced by the right amount.  Advancing ball by only half
 	  the amount can cause double strikes.
 	 */
-        float time_step = 1.0f / 90.0f;
-	if (hv.magnitude > 2f)
+        float time_step = (simulated ? Mathf.Max(Time.deltaTime, 0.001f) : 1.0f / 90.0f);
+	if (hv.magnitude > 2f && !simulated)
 	    //hv = 2*(hp - prev_pos) / time_step - prev_hv; // Unstable
 	    hv = (hp - prev_pos) / time_step;
 //        Vector3 hav = new Vector3 (-pose.vAngularVelocity.v0, -pose.vAngularVelocity.v1, pose.vAngularVelocity.v2);
@@ -384,21 +393,32 @@ public class Wand : MonoBehaviour {
     }
     */
     
+    // Vibrate the hand controller.  Duration in seconds, strength 0-1.
     public void haptic_pulse(float duration, float strength) {
+	strength = Mathf.Clamp01(strength);
+	if (!have_device())
+	{
+	    // No headset: show the pulse on screen in desktop mode.
+	    if (DesktopRig.active != null)
+		DesktopRig.active.show_haptic(left, duration, strength);
+	    return;
+	}
+	HapticCapabilities caps;
+	if (device.TryGetHapticCapabilities(out caps) && caps.supportsImpulse)
+	    device.SendHapticImpulse(0, strength, duration);
     }
-    /*
-        var dev = device ();
-        if (dev == null)
-            return;
-        StartCoroutine (haptic_pulses (dev, duration, strength));
-        //dev.TriggerHapticPulse (durationMicroSeconds);
+
+    // Several pulses separated by gaps, e.g. as a feedback cue that feels
+    // different from the single pulse of a ball hit.
+    public void haptic_pulses(int count, float duration, float strength, float gap) {
+	StartCoroutine(pulse_sequence(count, duration, strength, gap));
     }
-    IEnumerator haptic_pulses(SteamVR_Controller.Device device, float duration, float strength) {
-        ushort pulse_microsec = (ushort) (3999 * strength); // Max pulse duration is 4 milliseconds.
-        for (float t = 0; t < duration; t += Time.deltaTime) {
-            device.TriggerHapticPulse (pulse_microsec);
-            yield return new WaitForSeconds(0.005f);  // Can only trigger pulse every 5 msec according to SteamVR docs.
-        }
+
+    IEnumerator pulse_sequence(int count, float duration, float strength, float gap) {
+	for (int i = 0 ; i < count ; ++i)
+	{
+	    haptic_pulse(duration, strength);
+	    yield return new WaitForSeconds(duration + gap);
+	}
     }
-    */
 }
