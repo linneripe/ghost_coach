@@ -103,6 +103,8 @@ public class MotionFrame {
     public Quaternion paddle_rotation;
     public bool ball_in_play;
     public Vector3 ball_position;
+    public Vector3 robot_paddle_position;  // Opponent, so a rally can be replayed.
+    public Quaternion robot_paddle_rotation;
 
     public static MotionFrame lerp(MotionFrame a, MotionFrame b, float f) {
         MotionFrame m = new MotionFrame();
@@ -113,6 +115,8 @@ public class MotionFrame {
         m.paddle_rotation = Quaternion.Slerp(a.paddle_rotation, b.paddle_rotation, f);
         m.ball_in_play = (f < 0.5f ? a.ball_in_play : b.ball_in_play);
         m.ball_position = Vector3.Lerp(a.ball_position, b.ball_position, f);
+        m.robot_paddle_position = Vector3.Lerp(a.robot_paddle_position, b.robot_paddle_position, f);
+        m.robot_paddle_rotation = Quaternion.Slerp(a.robot_paddle_rotation, b.robot_paddle_rotation, f);
         return m;
     }
 }

@@ -64,6 +64,9 @@ public class MotionRecorder : MonoBehaviour {
         f.ball_in_play = (ball != null && ball.gameObject.activeSelf && !play.ball_held(ball));
         if (ball != null)
             f.ball_position = TableSpace.to_table(table, ball.transform.position);
+        Transform robot_paddle = play.robot.paddle.transform;
+        f.robot_paddle_position = TableSpace.to_table(table, robot_paddle.position);
+        f.robot_paddle_rotation = TableSpace.to_table(table, robot_paddle.rotation);
         clip.frames.Add(f);
     }
 
