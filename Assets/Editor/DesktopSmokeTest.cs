@@ -31,6 +31,15 @@ public static class DesktopSmokeTest {
         phase_start = 0f;
         failures.Clear();
         errors.Clear();
+        // Use a scratch folder for clips, logs and the participant counter,
+        // with 2 strokes per block so the test reaches the second block.
+        string root = System.IO.Path.GetFullPath("Temp/GhostCoachSmokeTest");
+        if (System.IO.Directory.Exists(root))
+            System.IO.Directory.Delete(root, true);
+        GhostCoachFiles.root_override = root;
+        ExperimentConfig config = ExperimentConfig.defaults();
+        config.strokes_per_block = 2;
+        System.IO.File.WriteAllText(GhostCoachFiles.path(ExperimentConfig.file_name), JsonUtility.ToJson(config, true));
         // Keep static state across entering play mode.
         saved_options_enabled = EditorSettings.enterPlayModeOptionsEnabled;
         saved_options = EditorSettings.enterPlayModeOptions;
@@ -172,6 +181,10 @@ public static class DesktopSmokeTest {
             int contacts = coach.coach_clip.contact_times().Count;
             check(contacts >= 1, "recorded clip has ball contacts (" + contacts + ")");
 
+            // Take the live balls out of play so only the simulated hits below
+            // count as strokes.
+            foreach (Ball b in Object.FindObjectsByType<Ball>(FindObjectsSortMode.None))
+                b.freeze = true;
             coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Path && !coach.coach_ghost.showing
                   && coach.path_guide.showing, "path phase hides coach and shows path");
@@ -216,8 +229,69 @@ public static class DesktopSmokeTest {
                   "back to right handed, coach not mirrored");
             check(binding(coach, "HoldBall").Contains("{LeftHand}") && binding(coach, "GhostTogglePhase").Contains("{RightHand}"),
                   "right handed: buttons back to normal");
+            Experiment e = coach.experiment;
+            check(e.participant == "P01" && e.block == 0 && e.variant.name == "A" && e.stroke_in_block == 1,
+                  "session P01 in block 1 (variant A) after one stroke, " + e.participant + " block " + e.block_label);
+            // Second stroke ends block 1.
+            play.player_paddle_hit(play.ball_in_play);
+            next_phase();
+        }
+        else if (phase == 11 && t > 0.6f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            Experiment e = coach.experiment;
+            check(e.block == 1 && e.variant.name == "B", "after 2 strokes block 2 uses variant B");
+            check(play.billboard.text.StartsWith("Block 2 av 4"), "block change shown: " + play.billboard.text.Replace("\n", " / "));
+            free_haptic_before = rig.free_haptic_count;
+            play.player_paddle_hit(play.ball_in_play);
+            next_phase();
+        }
+        else if (phase == 12 && t > 0.6f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            check(play.billboard.text == "", "variant B shows no score text, billboard \"" + play.billboard.text.Replace("\n", " / ") + "\"");
+            check(rig.free_haptic_count > free_haptic_before, "variant B still vibrates");
+            string log_path = coach.experiment.log.path;
+            coach.OnGhostNewSession();
+            check_log(log_path);
+            Experiment e = coach.experiment;
+            check(e.participant == "P02" && string.Join(" ", e.schedule) == "B A A B" && e.variant.name == "B",
+                  "next participant P02 gets B A A B, " + e.participant + " " + string.Join(" ", e.schedule));
+            check(e.log.path != log_path && System.IO.File.Exists(e.log.path), "new log file for P02");
             finish();
         }
+    }
+
+    // The session log of P01 should have the session, both blocks and the
+    // three strokes with their scores and the feedback given.
+    static void check_log(string path) {
+        string[] lines = System.IO.File.ReadAllLines(path);
+        Debug.Log("DesktopSmokeTest session log " + path + ":\n" + string.Join("\n", lines));
+        int strokes = 0, blocks = 0, phases = 0;
+        bool feedback_ok = true, columns_ok = true;
+        int event_col = System.Array.IndexOf(SessionLog.columns, "event");
+        int variant_col = System.Array.IndexOf(SessionLog.columns, "variant");
+        int text_col = System.Array.IndexOf(SessionLog.columns, "feedback_text");
+        int score_col = System.Array.IndexOf(SessionLog.columns, "score");
+        foreach (string line in lines) {
+            string[] c = line.Split(',');
+            if (c.Length < SessionLog.columns.Length) { columns_ok = false; continue; }
+            string ev = c[event_col];
+            if (ev == "block_start") blocks += 1;
+            if (ev == "phase") phases += 1;
+            if (ev == "stroke") {
+                strokes += 1;
+                int score;
+                bool text_expected = (c[variant_col] == "A");
+                if (!int.TryParse(c[score_col], out score) || c[text_col] != (text_expected ? "1" : "0"))
+                    feedback_ok = false;
+            }
+        }
+        check(lines.Length > 0 && lines[0].StartsWith("time,") && lines[1].Contains(",session_start,"),
+              "log starts with header and session_start");
+        check(strokes == 3 && blocks == 2, "log has 3 strokes and 2 block starts (" + strokes + ", " + blocks + ")");
+        check(phases >= 2, "log has the phase changes (" + phases + ")");
+        check(feedback_ok, "each stroke row has a score and the feedback of its variant");
+        check(columns_ok, "every row has all " + SessionLog.columns.Length + " columns");
+        check(lines[lines.Length-1].Contains(",session_end,"), "log ends with session_end");
     }
 
     // Render a view from beside and behind a point, for checking visuals
@@ -272,6 +346,7 @@ public static class DesktopSmokeTest {
     }
 
     static void finish() {
+        GhostCoachFiles.root_override = null;
         EditorApplication.update -= step;
         Application.logMessageReceived -= record_error;
         EditorApplication.ExitPlaymode();

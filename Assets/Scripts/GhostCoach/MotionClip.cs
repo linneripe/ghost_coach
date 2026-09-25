@@ -71,7 +71,7 @@ public class MotionClip {
     }
 
     public static string clips_directory() {
-        return Path.Combine(Application.persistentDataPath, "GhostCoach", "clips");
+        return Path.Combine(GhostCoachFiles.root, "clips");
     }
 
     public string save() {

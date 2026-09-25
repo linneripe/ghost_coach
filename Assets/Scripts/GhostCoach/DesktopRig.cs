@@ -214,6 +214,7 @@ public class DesktopRig : MonoBehaviour {
             if (keys.pKey.wasPressedThisFrame) coach.OnGhostTogglePhase();
             if (keys.kKey.wasPressedThisFrame) coach.OnGhostRecord();
             if (keys.lKey.wasPressedThisFrame) coach.OnGhostSpeed();
+            if (keys.nKey.wasPressedThisFrame) coach.OnGhostNewSession();
         }
         // Same as choosing Right or Left in the settings menu.
         if (keys.vKey.wasPressedThisFrame && play.settings != null)
@@ -312,8 +313,9 @@ public class DesktopRig : MonoBehaviour {
             "Tab: settings menu     Left click: press menu buttons\n" +
             "P: coach/path phase    K: start/stop recording coach\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
+            "N: next test participant\n" +
             "H: hide help";
-        GUI.Box(new Rect(10, 10, 420, 155), "");
-        GUI.Label(new Rect(18, 14, 410, 135), help);
+        GUI.Box(new Rect(10, 10, 420, 185), "");
+        GUI.Label(new Rect(18, 14, 410, 170), help);
     }
 }

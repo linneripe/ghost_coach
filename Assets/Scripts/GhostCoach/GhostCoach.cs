@@ -12,7 +12,8 @@ using UnityEngine.InputSystem;
 // (right controller A, P on the keyboard).  The right controller B button
 // (K on the keyboard) starts and stops recording a coach clip.  Clicking
 // the right thumbstick (L on the keyboard) changes the coach's playback
-// speed.
+// speed.  Holding the left thumbstick in (N on the keyboard) starts a
+// session for the next test participant (Experiment).
 //
 // Added at run time to the object holding the PlayerInput so it receives
 // the On<Action> messages from PlayControls.inputactions.
@@ -28,8 +29,10 @@ public class GhostCoach : MonoBehaviour {
     public Phase phase = Phase.Coach;
     public MotionClip recorded_clip;     // As recorded (or the mock coach).
     public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
+    public Experiment experiment;
     bool player_left_handed;
     bool bindings_set = false;
+    bool variant_applied = false;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create() {
@@ -79,6 +82,32 @@ public class GhostCoach : MonoBehaviour {
         Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
                   + c.contact_times().Count + " strokes");
         set_coach(c);
+        experiment = new Experiment(this);
+        experiment.start_session();
+    }
+
+    void OnDestroy() {
+        if (experiment != null)
+            experiment.end_session();
+    }
+
+    // Use the settings of the experiment's current variant.
+    void apply_variant() {
+        variant_applied = true;
+        Variant v = experiment.variant;
+        coach_ghost.stand_on_paddle_side = v.coach_on_paddle_side;
+        coach_ghost.stand_behind = v.coach_behind;
+        if (DesktopRig.active == null)        // The editor has no passthrough.
+            play.enable_show_room(v.mixed_reality);
+        update_ghost();
+    }
+
+    public void new_session() {
+        experiment.start_session();
+        apply_variant();
+        show_message("Ny deltagare " + experiment.participant
+                     + (experiment.finished ? "" : "\nBlock " + experiment.block_label));
+        play.paddle_hand.wand.haptic_pulses(3, 0.08f, 0.8f, 0.08f);
     }
 
     // Use a clip as the coach, mirrored when the coach played with the
@@ -125,9 +154,13 @@ public class GhostCoach : MonoBehaviour {
 
     // The player can switch hand in the settings menu at any time.
     void Update() {
+        // After all Start() calls, so the settings menu does not undo it.
+        if (!variant_applied && experiment != null)
+            apply_variant();
         if (play.paddle_hand.wand.left != player_left_handed) {
             set_coach(recorded_clip);
             show_message(player_left_handed ? "Vänsterhänt: coachen spegelvänd" : "Högerhänt");
+            experiment.log_event("hand", player_left_handed ? "left" : "right");
         }
     }
 
@@ -142,16 +175,19 @@ public class GhostCoach : MonoBehaviour {
                          : "Fas 2: Din tur\nStå på markeringen, följ banan");
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
+        experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
     }
 
     public void toggle_recording() {
         if (!recorder.recording) {
             recorder.start_recording();
-            coach_ghost.hide();       // Record live play, not the replay.
+            update_ghost();           // Hide the replay and the path, and do not score.
             show_message("Spelar in coach...\nTryck B igen för att sluta");
             play.paddle_hand.wand.haptic_pulses(1, 0.1f, 0.8f, 0f);
+            experiment.log_event("recording_start", "");
         } else {
             MotionClip c = recorder.stop_recording();
+            experiment.log_event("recording_stop", c != null ? c.name : "nothing recorded");
             if (c != null) {
                 set_coach(c);
                 show_message("Sparade " + c.name + "\n" + c.contact_times().Count + " slag, "
@@ -191,21 +227,30 @@ public class GhostCoach : MonoBehaviour {
         }
     }
 
-    // Phase 2 feedback after each stroke: the score and one tip as short
-    // text, and a vibration in the free hand so it does not mix with the
-    // ball hit pulse in the paddle hand.  One long pulse means a good
-    // stroke, two short pulses mean look at the tip.
+    // Phase 2 feedback after each stroke, as the current variant says: the
+    // score and one tip as short text, and/or a vibration in the free hand
+    // so it does not mix with the ball hit pulse in the paddle hand.  One
+    // long pulse means a good stroke, two short pulses mean look at the tip.
     public void stroke_scored(StrokeScore s) {
-        show_message("Score " + s.score + "\n" + s.tip);
-        if (s.score >= StrokeCompare.good_score)
-            play.free_hand.wand.haptic_pulses(1, 0.15f, 0.6f, 0f);
-        else
-            play.free_hand.wand.haptic_pulses(2, 0.05f, 0.8f, 0.08f);
+        Variant v = experiment.variant;
+        show_message(v.feedback_text ? "Score " + s.score + "\n" + s.tip : "");
+        if (v.feedback_haptic) {
+            if (s.score >= StrokeCompare.good_score)
+                play.free_hand.wand.haptic_pulses(1, 0.15f, 0.6f, 0f);
+            else
+                play.free_hand.wand.haptic_pulses(2, 0.05f, 0.8f, 0.08f);
+        }
+        string block_message = experiment.stroke(s, v.feedback_text, v.feedback_haptic);
+        if (block_message != null) {
+            apply_variant();
+            show_message(block_message);
+        }
     }
 
     public void change_speed() {
         float s = coach_ghost.next_speed();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
+        experiment.log_event("coach_speed", Mathf.RoundToInt(100f * s) + "%");
     }
 
     void show_message(string text) {
@@ -225,5 +270,9 @@ public class GhostCoach : MonoBehaviour {
 
     public void OnGhostSpeed() {
         change_speed();
+    }
+
+    public void OnGhostNewSession() {
+        new_session();
     }
 }
