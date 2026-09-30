@@ -124,10 +124,17 @@ public static class DesktopSmokeTest {
                 if (cp != null)
                     save_view(gc.coach_ghost.player_spot + 1.6f * Vector3.up, cp.transform.position, 60f,
                               "Logs/smoke_coach_contact.png");
-                if (gc.coach_clip.has_bones)
+                // The character mesh is not in git (see Tools/blender/README.md), so
+                // these checks only run where the file has been copied in.
+                bool has_mesh = gc.coach_clip.has_bones
+                                && Resources.Load<TextAsset>("GhostCoach/clips/" + gc.coach_clip.body) != null;
+                if (has_mesh)
                     check_body(gc, contacts.Count > 0 ? contacts[0] : 1f);
+                else if (gc.coach_clip.has_bones)
+                    check(gc.coach_ghost.body == null && GameObject.Find("ghost body mesh") == null,
+                          "without the character mesh file the simple figure is drawn");
                 // The whole figure from the front-left, further away.
-                if (gc.coach_ghost.body != null) {
+                if (gc.coach_ghost.body != null && gc.coach_ghost.body.bone("mixamorig:Hips") != null) {
                     Vector3 hips = gc.coach_ghost.body.bone("mixamorig:Hips").position;
                     Vector3 side = gc.coach_ghost.player_spot - hips;
                     side.y = 0f;
