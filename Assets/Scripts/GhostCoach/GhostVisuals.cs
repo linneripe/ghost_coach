@@ -4,6 +4,22 @@ using UnityEngine;
 // both training phases.
 public static class GhostVisuals {
 
+    // The game's paddle blade and rubbers are flat boxes.  The ghost racket
+    // is drawn round by default, like a real blade.  Only how the ghost
+    // looks: the hit area of the player's own paddle in the game is still
+    // the box.
+    public static bool round_racket = true;
+    static Mesh cylinder_mesh;
+
+    static Mesh cylinder() {
+        if (cylinder_mesh == null) {
+            GameObject g = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            cylinder_mesh = g.GetComponent<MeshFilter>().sharedMesh;
+            Object.Destroy(g);
+        }
+        return cylinder_mesh;
+    }
+
     // Material from Assets/Resources/GhostCoach (see GhostCoachAssets).
     public static Material material(string name) {
         return Resources.Load<Material>("GhostCoach/" + name);
@@ -67,7 +83,17 @@ public static class GhostVisuals {
             g.transform.localPosition = inverse * (r.transform.position - source.position);
             g.transform.localRotation = inverse * r.transform.rotation;
             g.transform.localScale = r.transform.lossyScale;    // Copy root is not scaled.
-            g.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+            Mesh mesh = mf.sharedMesh;
+            if (round_racket && mesh.name == "Cube") {
+                // A cylinder lying along the box's thin axis (z): turn its
+                // axis (y) to z, so its scale x, y, z becomes diameter in x,
+                // half the thickness, and diameter in y.
+                Vector3 s = r.transform.lossyScale;
+                g.transform.localRotation *= Quaternion.Euler(90f, 0f, 0f);
+                g.transform.localScale = new Vector3(s.x, 0.5f * s.z, s.y);
+                mesh = cylinder();
+            }
+            g.AddComponent<MeshFilter>().sharedMesh = mesh;
             g.AddComponent<MeshRenderer>().sharedMaterial = m;
         }
         return copy;

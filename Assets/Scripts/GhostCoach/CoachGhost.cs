@@ -84,6 +84,12 @@ public class CoachGhost : MonoBehaviour {
             ghost_root.gameObject.SetActive(false);
     }
 
+    // Jump to a time in the clip, e.g. to look at a ball contact.
+    public void seek(float t) {
+        playback_time = Mathf.Clamp(t, 0f, clip.duration);
+        pose_ghost(clip.sample(playback_time));
+    }
+
     // Cycle playback speed 100%, 50%, 25%.  Returns the new speed.
     public float next_speed() {
         speed = (speed > 0.75f ? 0.5f : (speed > 0.375f ? 0.25f : 1f));

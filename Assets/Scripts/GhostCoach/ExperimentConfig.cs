@@ -23,6 +23,10 @@ public class Variant {
 [Serializable]
 public class ExperimentConfig {
     public bool run_schedule = true;
+    // Recording a coach with the headset (right B) is off by default: the
+    // coach comes from a Qualisys take, and accidental presses would
+    // otherwise replace it.  Turn on to make a clip without mocap.
+    public bool allow_recording = false;
     public int strokes_per_block = 20;
     public List<string> schedule = new List<string> { "A", "B", "B", "A" };
     // Every second participant gets the variants swapped (A B B A becomes

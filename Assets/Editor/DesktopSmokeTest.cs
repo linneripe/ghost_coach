@@ -39,6 +39,7 @@ public static class DesktopSmokeTest {
         GhostCoachFiles.root_override = root;
         ExperimentConfig config = ExperimentConfig.defaults();
         config.strokes_per_block = 2;
+        config.allow_recording = true;
         System.IO.File.WriteAllText(GhostCoachFiles.path(ExperimentConfig.file_name), JsonUtility.ToJson(config, true));
         // Keep static state across entering play mode.
         saved_options_enabled = EditorSettings.enterPlayModeOptionsEnabled;
@@ -78,9 +79,24 @@ public static class DesktopSmokeTest {
         }
         if (phase == 0 && t > 0.5f) {
             check(rig != null, "desktop rig created when no headset");
+            int loose = 0;
+            foreach (Ball b in Object.FindObjectsByType<Ball>(FindObjectsSortMode.None))
+                if (b.gameObject.activeInHierarchy && !play.ball_held(b))
+                    loose += 1;
+            check(loose == 0, "no ball lying around at the start, loose balls " + loose);
             if (rig == null) { finish(); return; }
             save_camera_view(rig.head_camera, "Logs/smoke_player_view.png");
             GhostCoach gc = Object.FindFirstObjectByType<GhostCoach>();
+            if (gc != null && gc.coach_ghost.showing) {
+                // The moment the coach hits the ball, seen from the stand marker.
+                List<float> contacts = gc.coach_clip.contact_times();
+                gc.coach_ghost.seek(contacts.Count > 0 ? contacts[0] : 1f);
+                GameObject cp = GameObject.Find("ghost paddle");
+                if (cp != null)
+                    save_view(gc.coach_ghost.player_spot + 1.6f * Vector3.up, cp.transform.position, 60f,
+                              "Logs/smoke_coach_contact.png");
+            }
+            check(gc != null && gc.coach_clip != null && gc.coach_clip.has_ball, "coach clip has a ball, recorded or made up");
             if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
                 check(gc.coach_ghost.showing, "mock coach shown when nothing is recorded");
                 GameObject mp = GameObject.Find("ghost paddle");
@@ -130,6 +146,17 @@ public static class DesktopSmokeTest {
             haptic_count_before = rig.paddle_haptic_count;
             coach.OnGhostTogglePhase();
             check(coach.phase != before, "phase toggled to " + coach.phase);
+            // A quick start and stop, as from random button presses, must not
+            // be saved or replace the coach.
+            string coach_before = coach.coach_clip.name;
+            coach.OnGhostRecord();
+            coach.OnGhostRecord();
+            check(!coach.recorder.recording && coach.coach_clip.name == coach_before
+                  && !string.IsNullOrEmpty(coach.recorder.discarded),
+                  "a quick record and stop is discarded, \"" + coach.recorder.discarded + "\"");
+            check(System.IO.Directory.Exists(MotionClip.clips_directory()) == false
+                  || System.IO.Directory.GetFiles(MotionClip.clips_directory(), "*.json").Length == 0,
+                  "the discarded recording was not saved");
             coach.OnGhostRecord();
             check(coach.recorder.recording, "recording started");
             next_phase();
@@ -141,7 +168,7 @@ public static class DesktopSmokeTest {
             play.player_paddle_hit(play.ball_in_play);
             next_phase();
         }
-        else if (phase == 6 && t > 0.5f) {
+        else if (phase == 6 && t > MotionClip.min_coach_seconds + 0.3f) {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             check(rig.paddle_haptic_count > haptic_count_before,
                   "haptic pulses shown in desktop mode (" + (rig.paddle_haptic_count - haptic_count_before) + ")");
@@ -163,6 +190,13 @@ public static class DesktopSmokeTest {
             coach.coach_ghost.speed = 1f;
             GameObject gp = GameObject.Find("ghost paddle");
             check(gp != null, "ghost paddle created");
+            MeshFilter blade = (gp != null ? gp.GetComponentInChildren<MeshFilter>() : null);
+            bool round = false;
+            if (gp != null)
+                foreach (MeshFilter mf in gp.GetComponentsInChildren<MeshFilter>())
+                    if (mf.name == "blade" && mf.sharedMesh.name == "Cylinder")
+                        round = true;
+            check(round, "ghost racket blade is round");
             if (gp != null)
                 ghost_paddle_start = gp.transform.position;
             ghost_time_start = coach.coach_ghost.time;
@@ -256,6 +290,14 @@ public static class DesktopSmokeTest {
             check(e.participant == "P02" && string.Join(" ", e.schedule) == "B A A B" && e.variant.name == "B",
                   "next participant P02 gets B A A B, " + e.participant + " " + string.Join(" ", e.schedule));
             check(e.log.path != log_path && System.IO.File.Exists(e.log.path), "new log file for P02");
+            // Reset after random button presses.
+            coach.coach_ghost.speed = 1f;
+            if (coach.phase == GhostCoach.Phase.Coach)
+                coach.OnGhostTogglePhase();
+            coach.OnGhostReset();
+            check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing
+                  && Mathf.Approximately(coach.coach_ghost.speed, 0.5f),
+                  "reset goes back to phase 1 at half speed");
             finish();
         }
     }
@@ -304,6 +346,25 @@ public static class DesktopSmokeTest {
         cam.transform.position = target + 1.8f * away.normalized + new Vector3(1.2f, 0.6f, 0f);
         cam.transform.LookAt(target - 0.3f * Vector3.up);
         cam.fieldOfView = 70f;
+        RenderTexture rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        Texture2D image = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        image.Apply();
+        RenderTexture.active = null;
+        System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
+        Object.DestroyImmediate(cam.gameObject);
+        Debug.Log("DesktopSmokeTest saved screenshot " + path);
+    }
+
+    // Render from a point toward another point, for checking visuals by eye.
+    static void save_view(Vector3 from, Vector3 look_at, float fov, string path) {
+        Camera cam = new GameObject("smoke test view").AddComponent<Camera>();
+        cam.transform.position = from;
+        cam.transform.LookAt(look_at);
+        cam.fieldOfView = fov;
         RenderTexture rt = new RenderTexture(1280, 720, 24);
         cam.targetTexture = rt;
         cam.Render();

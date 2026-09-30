@@ -215,6 +215,7 @@ public class DesktopRig : MonoBehaviour {
             if (keys.kKey.wasPressedThisFrame) coach.OnGhostRecord();
             if (keys.lKey.wasPressedThisFrame) coach.OnGhostSpeed();
             if (keys.nKey.wasPressedThisFrame) coach.OnGhostNewSession();
+            if (keys.backspaceKey.wasPressedThisFrame) coach.OnGhostReset();
         }
         // Same as choosing Right or Left in the settings menu.
         if (keys.vKey.wasPressedThisFrame && play.settings != null)
@@ -311,9 +312,9 @@ public class DesktopRig : MonoBehaviour {
             "Z/X: open/close face   C: forehand/backhand (" + (backhand ? "backhand" : "forehand") + ")\n" +
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
             "Tab: settings menu     Left click: press menu buttons\n" +
-            "P: coach/path phase    K: start/stop recording coach\n" +
+            "P: coach/path phase\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
-            "N: next test participant\n" +
+            "N: next test participant   Backspace: reset\n" +
             "H: hide help";
         GUI.Box(new Rect(10, 10, 420, 185), "");
         GUI.Label(new Rect(18, 14, 410, 170), help);

@@ -29,6 +29,14 @@ public class MotionClip {
         get { return (frames.Count > 0 ? frames[frames.Count-1].t : 0f); }
     }
 
+    // A recording needs some time and at least one stroke to be worth using
+    // as a coach; a few accidental button presses give neither.
+    public const float min_coach_seconds = 3f;
+
+    public bool usable_as_coach {
+        get { return duration >= min_coach_seconds && events.Count > 0; }
+    }
+
     // Times of ball contacts with the paddle, seconds from clip start.
     public List<float> contact_times() {
         List<float> times = new List<float>();
@@ -108,21 +116,20 @@ public class MotionClip {
         return JsonUtility.FromJson<MotionClip>(assets[0].text);
     }
 
-    // Most recently written clip, or null if there are none.
+    // Most recently written clip that is usable as a coach (see
+    // usable_as_coach), or null.  Accidental recordings are skipped.
     public static MotionClip load_latest() {
         string dir = clips_directory();
         if (!Directory.Exists(dir))
             return null;
-        string latest = null;
-        DateTime latest_time = DateTime.MinValue;
-        foreach (string path in Directory.GetFiles(dir, "*.json")) {
-            DateTime t = File.GetLastWriteTime(path);
-            if (t > latest_time) {
-                latest = path;
-                latest_time = t;
-            }
+        string[] paths = Directory.GetFiles(dir, "*.json");
+        Array.Sort(paths, (a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
+        foreach (string path in paths) {
+            MotionClip c = load(path);
+            if (c != null && c.usable_as_coach)
+                return c;
         }
-        return (latest == null ? null : load(latest));
+        return null;
     }
 }
 
