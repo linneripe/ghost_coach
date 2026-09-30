@@ -12,6 +12,18 @@
 #   --left              the player is left handed
 #   --min-speed V       racket speed peak in m/s that counts as a stroke
 #                       (default 4; lower for slow play)
+#   --no-body           do not export the character mesh and bone motion
+#
+# Unless --no-body is given the character mesh of the rig (the objects
+# parented to "Armature", e.g. Alpha_Surface and Alpha_Joints) is written
+# next to the clip as NAME.body.bytes, and the bone poses of the exported
+# window are stored in the clip, so Unity can draw the same figure as
+# Blender does.  The two files belong together: they use the same table
+# frame.  Mesh format (little endian): magic "GCB1", bone count, vertex
+# count, submesh count, index count per submesh, bone names, rest
+# positions of the bones (3 floats each), vertices (3 floats), normals (3
+# floats), bone indices (4 bytes), bone weights (4 floats), triangle
+# indices (ints).  Everything in table coordinates in the rest pose.
 #
 # The Blender file is expected to have, as in the lab's bake.blend:
 #   - "Armature": Mixamo rig with the body motion baked at the scene rate
@@ -26,8 +38,9 @@
 # player's right.  The mocap has no ball, so strokes are found from racket
 # speed peaks and the clip has no ball or opponent.
 
-import bpy, json, math, sys, os
-from mathutils import Vector
+import bpy, json, math, sys, os, struct, base64
+from array import array
+from mathutils import Vector, Matrix
 from bpy_extras import anim_utils
 
 RACKET_RATE = 200.0          # The racket markers are keyed once per 200 Hz sample.
@@ -44,11 +57,14 @@ JOINTS = ["Hips", "Spine2", "Neck", "Head", "HeadTop_End",
 
 def arguments():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    a = {"out": "-", "name": None, "start": None, "end": None, "left": False, "min-speed": MIN_STROKE_SPEED}
+    a = {"out": "-", "name": None, "start": None, "end": None, "left": False, "min-speed": MIN_STROKE_SPEED,
+         "body": True}
     i = 0
     while i < len(argv):
         if argv[i] == "--left":
             a["left"] = True
+        elif argv[i] == "--no-body":
+            a["body"] = False
         elif argv[i] in ("--name", "--start", "--end", "--min-speed"):
             a[argv[i][2:]] = argv[i + 1]
             i += 1
@@ -110,6 +126,13 @@ class TableFrame:
         self.right = toward_table.cross(Vector((0, 0, 1)))    # Unity x.
         center = mid + TABLE_HALF_LENGTH * toward_table
         self.origin = Vector((center.x, center.y, 0.0))
+        # Rows are the table axes, so basis @ v gives table coordinates.
+        # It mirrors (determinant -1), which flips triangle winding.
+        self.basis = Matrix((self.right, Vector((0, 0, 1)), self.forward))
+
+    def rotation(self, r):
+        # A rotation matrix in world coordinates as one in table coordinates.
+        return self.basis @ r @ self.basis.transposed()
 
     def point(self, p):
         d = p - self.origin
@@ -150,6 +173,123 @@ def look_rotation(forward, up):
 
 def vec(v):
     return {"x": round(v.x, 5), "y": round(v.y, 5), "z": round(v.z, 5)}
+
+
+BONE_PREFIX_SKIP = ()
+
+
+def matrix_quaternion(m):
+    return quaternion_from_axes(Vector(m.col[0]), Vector(m.col[1]), Vector(m.col[2]))
+
+
+def rotation_of(matrix):
+    return matrix.to_3x3().normalized()
+
+
+def write_body(path, arm, table, rest_frame):
+    # Character mesh in the rest pose, skin weights and rest bone positions
+    # in table coordinates.  The rest pose is the armature at rest_frame.
+    scene = bpy.context.scene
+    scene.frame_set(rest_frame)
+    dg = bpy.context.evaluated_depsgraph_get()
+    ae = arm.evaluated_get(dg)
+    world = ae.matrix_world
+    bones = list(arm.data.bones)
+    index = {b.name: i for i, b in enumerate(bones)}
+    meshes = [o for o in arm.children if o.type == "MESH"]
+    meshes.sort(key=lambda o: (0 if "Surface" in o.name else 1, o.name))
+    positions, normals, bone_index, weights, submeshes = [], [], [], [], []
+    for obj in meshes:
+        mesh = obj.data
+        mw = obj.evaluated_get(dg).matrix_world
+        rot = rotation_of(mw)
+        names = [g.name for g in obj.vertex_groups]
+        base = len(positions)
+        for v in mesh.vertices:
+            positions.append(table.point(mw @ v.co))
+            normals.append(table.direction(rot @ v.normal).normalized())
+            groups = sorted(((g.weight, names[g.group]) for g in v.groups if names[g.group] in index), reverse=True)[:4]
+            total = sum(w for w, _ in groups)
+            if total <= 1e-6:
+                groups, total = [(1.0, bones[0].name)], 1.0
+            ids = [index[n] for _, n in groups] + [0] * (4 - len(groups))
+            ws = [w / total for w, _ in groups] + [0.0] * (4 - len(groups))
+            bone_index.append(ids)
+            weights.append(ws)
+        mesh.calc_loop_triangles()
+        tris = []
+        for t in mesh.loop_triangles:
+            a, b, c = t.vertices
+            tris += [base + a, base + c, base + b]           # Flipped: the table basis mirrors.
+        submeshes.append(tris)
+        print("INFO body mesh", obj.name, len(mesh.vertices), "vertices", len(tris) // 3, "triangles")
+    rest = [table.point(world @ b.head_local) for b in bones]
+    with open(path, "wb") as f:
+        f.write(b"GCB1")
+        f.write(struct.pack("<iiii", len(bones), len(positions), len(submeshes), 0))
+        for tris in submeshes:
+            f.write(struct.pack("<i", len(tris)))
+        for b in bones:
+            name = b.name.encode("utf-8")
+            f.write(struct.pack("<i", len(name)))
+            f.write(name)
+        for p in rest:
+            f.write(struct.pack("<3f", p.x, p.y, p.z))
+        for p in positions:
+            f.write(struct.pack("<3f", p.x, p.y, p.z))
+        for n in normals:
+            f.write(struct.pack("<3f", n.x, n.y, n.z))
+        for ids in bone_index:
+            f.write(struct.pack("<4B", *ids))
+        for ws in weights:
+            f.write(struct.pack("<4f", *ws))
+        for tris in submeshes:
+            f.write(array("i", tris).tobytes())
+    print("INFO wrote body mesh %s: %d bones, %d vertices, %.1f MB"
+          % (path, len(bones), len(positions), os.path.getsize(path) / 1e6))
+    skin = {"meshes": meshes, "positions": positions, "bone_index": bone_index, "weights": weights, "rest": rest}
+    return [b.name for b in bones], [Matrix(rotation_of(world @ b.matrix_local)) for b in bones], skin
+
+
+def verify_skin(arm, table, skin, bone_floats, bone_count, first, k):
+    # Rebuild the deformed mesh at exported frame k the way Unity does (linear
+    # blend skinning from the exported bone poses) and compare it with what
+    # Blender itself computes.  A wrong rotation convention or mirroring
+    # shows up here as errors of many centimeters.
+    from mathutils import Quaternion
+    scene = bpy.context.scene
+    scene.frame_set(scene.frame_start + first + k)
+    dg = bpy.context.evaluated_depsgraph_get()
+    stride = 7 * bone_count
+    poses = []
+    for i in range(bone_count):
+        o = k * stride + 7 * i
+        pos = Vector(bone_floats[o:o + 3])
+        q = Quaternion((bone_floats[o + 6], bone_floats[o + 3], bone_floats[o + 4], bone_floats[o + 5]))
+        poses.append((pos, q))
+    errors, moved = [], []
+    n = 0
+    for obj in skin["meshes"]:
+        ev = obj.evaluated_get(dg)
+        mesh = ev.to_mesh()
+        for v in mesh.vertices:
+            target = table.point(ev.matrix_world @ v.co)
+            rest_v = skin["positions"][n]
+            got = Vector((0, 0, 0))
+            for b, w in zip(skin["bone_index"][n], skin["weights"][n]):
+                if w > 0:
+                    pos, q = poses[b]
+                    got += w * (q @ (rest_v - skin["rest"][b]) + pos)
+            errors.append((got - target).length)
+            moved.append((target - rest_v).length)
+            n += 1
+        ev.to_mesh_clear()
+    errors.sort()
+    print("INFO skin check frame %d: mean %.4f m, 95%% %.4f m, max %.4f m over %d vertices, "
+          "the figure has moved %.2f m on average from the rest pose"
+          % (k, sum(errors) / len(errors), errors[int(0.95 * len(errors))], errors[-1], len(errors),
+             sum(moved) / len(moved)))
+    return errors[int(0.95 * len(errors))]
 
 
 def main():
@@ -283,16 +423,35 @@ def main():
     first = int(math.floor(start * body_rate))
     last = int(math.ceil(end * body_rate)) + 1
     body = []
+    bone_names, rest_rotations, skin = [], [], None
+    bone_floats = array("f")
+    if args["body"]:
+        body_path = os.path.splitext(args["out"])[0] + ".body.bytes"
+        bone_names, rest_rotations, skin = write_body(body_path, arm, table, scene.frame_start)
     for f in range(first, last + 1):
         scene.frame_set(scene.frame_start + f)
         dg = bpy.context.evaluated_depsgraph_get()
         ae = arm.evaluated_get(dg)
+        for i, name in enumerate(bone_names):
+            pb = ae.pose.bones[name]
+            pos = table.point(ae.matrix_world @ pb.head)
+            # World rotation change from the rest pose, as a table rotation.
+            delta = table.rotation(rotation_of(ae.matrix_world @ pb.matrix) @ rest_rotations[i].inverted())
+            q = matrix_quaternion(delta)
+            bone_floats.extend([pos.x, pos.y, pos.z, q["x"], q["y"], q["z"], q["w"]])
         joints = [table.point(ae.matrix_world @ ae.pose.bones["mixamorig:" + j].head) for j in JOINTS]
         head = ae.pose.bones["mixamorig:Head"]
         world = ae.matrix_world @ head.matrix
         up = table.direction(world.col[1].xyz.normalized())
         face = table.direction(world.col[2].xyz.normalized())
         body.append((joints, up, face))
+
+    if skin is not None:
+        frames_exported = last - first + 1
+        worst = max(verify_skin(arm, table, skin, bone_floats, len(bone_names), first, k)
+                    for k in (0, frames_exported // 2, frames_exported - 1))
+        if worst > 0.03:
+            print("INFO WARNING skin does not match Blender, 95%% of vertices within %.3f m" % worst)
 
     def body_at(t):
         x = t * body_rate - first
@@ -330,6 +489,10 @@ def main():
               for s in strokes if start <= s["t"] <= end]
     name = args["name"] or os.path.splitext(os.path.basename(args["out"]))[0]
     clip = {"name": name, "source": "qualisys", "left_handed": args["left"], "recorded": "",
+            "body": (os.path.basename(os.path.splitext(args["out"])[0]) + ".body") if bone_names else "",
+            "bone_names": bone_names, "bone_rate": body_rate, "bone_t0": first / body_rate - start,
+            "bone_frames": (last - first + 1) if bone_names else 0,
+            "bone_data": base64.b64encode(bone_floats.tobytes()).decode("ascii") if bone_names else "",
             "has_ball": False, "has_opponent": False, "joint_names": JOINTS,
             "frames": frames, "events": events}
     with open(args["out"], "w") as f:
