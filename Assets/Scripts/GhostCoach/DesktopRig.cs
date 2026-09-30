@@ -216,6 +216,7 @@ public class DesktopRig : MonoBehaviour {
             if (keys.lKey.wasPressedThisFrame) coach.OnGhostSpeed();
             if (keys.nKey.wasPressedThisFrame) coach.OnGhostNewSession();
             if (keys.backspaceKey.wasPressedThisFrame) coach.OnGhostReset();
+            if (keys.gKey.wasPressedThisFrame) coach.OnGhostToggleHands();
         }
         // Same as choosing Right or Left in the settings menu.
         if (keys.vKey.wasPressedThisFrame && play.settings != null)
@@ -315,8 +316,9 @@ public class DesktopRig : MonoBehaviour {
             "P: coach/path phase\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
             "N: next test participant   Backspace: reset\n" +
+            "G: hide/show racket and ball in hand\n" +
             "H: hide help";
-        GUI.Box(new Rect(10, 10, 420, 185), "");
-        GUI.Label(new Rect(18, 14, 410, 170), help);
+        GUI.Box(new Rect(10, 10, 420, 200), "");
+        GUI.Label(new Rect(18, 14, 410, 185), help);
     }
 }

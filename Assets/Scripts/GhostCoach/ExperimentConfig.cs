@@ -27,6 +27,10 @@ public class ExperimentConfig {
     // coach comes from a Qualisys take, and accidental presses would
     // otherwise replace it.  Turn on to make a clip without mocap.
     public bool allow_recording = false;
+    // Look of the scene.  The floor marker only helps when telling a new
+    // tester where to stand; the racket is drawn round like a real blade.
+    public bool show_stand_marker = false;
+    public bool round_racket = true;
     public int strokes_per_block = 20;
     public List<string> schedule = new List<string> { "A", "B", "B", "A" };
     // Every second participant gets the variants swapped (A B B A becomes
@@ -98,6 +102,9 @@ public class ExperimentConfig {
 [Serializable]
 public class ExperimentState {
     public int next_participant = 1;
+    // The player's choice to hide the racket and ball in the hand, kept
+    // between launches.
+    public bool hide_hand_visuals = false;
 
     const string file_name = "state.json";
 

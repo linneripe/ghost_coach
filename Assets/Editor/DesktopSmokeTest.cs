@@ -20,6 +20,7 @@ public static class DesktopSmokeTest {
     static Vector3 ghost_paddle_start;
     static float ghost_time_start;
     static int free_haptic_before;
+    static List<bool> paddle_states = new List<bool>();
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -84,6 +85,34 @@ public static class DesktopSmokeTest {
                 if (b.gameObject.activeInHierarchy && !play.ball_held(b))
                     loose += 1;
             check(loose == 0, "no ball lying around at the start, loose balls " + loose);
+
+            // The racket in the hand is drawn round, with the hit area unchanged.
+            Paddle own = play.paddle_hand.held_paddle;
+            bool round_rubber = false, box_showing = false;
+            foreach (MeshFilter mf in own.GetComponentsInChildren<MeshFilter>(true)) {
+                if (mf.name == "round rubber red" && mf.sharedMesh.name == "Cylinder" && mf.GetComponent<MeshRenderer>().enabled)
+                    round_rubber = true;
+                if (mf.sharedMesh != null && mf.sharedMesh.name == "Cube" && mf.GetComponent<MeshRenderer>().enabled)
+                    box_showing = true;
+            }
+            check(round_rubber && !box_showing, "the racket in the hand is round, no box showing");
+            Vector3 rubber = own.forehand_rubber().transform.localScale;
+            check(Mathf.Approximately(rubber.x, 0.15f) && Mathf.Approximately(rubber.y, 0.16f)
+                  && Mathf.Approximately(rubber.z, 0.002f),
+                  "hit area is unchanged, rubber scale " + rubber.ToString("F3"));
+
+            // Hide the racket and the ball in the hand.
+            GhostCoach hide_gc = Object.FindFirstObjectByType<GhostCoach>();
+            check(!hide_gc.hand_visuals.hidden, "racket and ball in the hand are shown by default");
+            paddle_states.Clear();
+            foreach (MeshRenderer r in own.GetComponentsInChildren<MeshRenderer>(true))
+                paddle_states.Add(r.enabled);
+            hide_gc.OnGhostToggleHands();
+            bool all_off = true;
+            foreach (MeshRenderer r in own.GetComponentsInChildren<MeshRenderer>(true))
+                if (r.enabled)
+                    all_off = false;
+            check(hide_gc.hand_visuals.hidden && all_off, "toggle hides the racket in the hand");
             if (rig == null) { finish(); return; }
             save_camera_view(rig.head_camera, "Logs/smoke_player_view.png");
             GhostCoach gc = Object.FindFirstObjectByType<GhostCoach>();
@@ -107,6 +136,30 @@ public static class DesktopSmokeTest {
             next_phase();
         }
         else if (phase == 1 && t > 0.2f) {
+            Ball in_hand = play.free_hand.held_ball;
+            check(in_hand != null && !in_hand.GetComponent<MeshRenderer>().enabled, "toggle hides the ball in the hand");
+            {
+                GhostCoach g1 = Object.FindFirstObjectByType<GhostCoach>();
+                Paddle own1 = play.paddle_hand.held_paddle;
+                g1.OnGhostToggleHands();
+                MeshRenderer[] now = own1.GetComponentsInChildren<MeshRenderer>(true);
+                bool same = (now.Length == paddle_states.Count);
+                bool box_showing = false;
+                for (int k = 0 ; same && k < now.Length ; ++k) {
+                    if (now[k].enabled != paddle_states[k])
+                        same = false;
+                    MeshFilter mfk = now[k].GetComponent<MeshFilter>();
+                    if (now[k].enabled && mfk != null && mfk.sharedMesh != null && mfk.sharedMesh.name == "Cube")
+                        box_showing = true;
+                }
+                check(!g1.hand_visuals.hidden && same && !box_showing,
+                      "toggle again restores the round racket as it was, " + now.Length + " parts");
+                check(!ExperimentState.load().hide_hand_visuals, "the choice is remembered");
+                // The racket in the hand, forehand side, from close by.
+                Vector3 normal = own1.forehand_normal();
+                save_view(own1.position + 0.35f * normal + 0.08f * Vector3.up, own1.position, 40f,
+                          "Logs/smoke_own_racket.png");
+            }
             paddle_start = play.paddle_hand.held_paddle.transform.position;
             rig.set_pointer(new Vector2(0.8f, 0.3f));
             check(play.free_hand.holding_ball(), "ball held in free hand at start");
@@ -125,6 +178,7 @@ public static class DesktopSmokeTest {
             check((p - paddle_start).magnitude > 0.05f,
                   "paddle follows pointer, moved " + (p - paddle_start).magnitude.ToString("F2") + " m");
             check(!play.free_hand.holding_ball(), "ball released by toss");
+            check(tossed_ball == null || tossed_ball.GetComponent<MeshRenderer>().enabled, "the ball is visible again");
             if (tossed_ball != null)
                 check(toss_max_height > 0.15f,
                       "tossed ball rose " + toss_max_height.ToString("F2") + " m");
@@ -194,13 +248,17 @@ public static class DesktopSmokeTest {
             bool round = false;
             if (gp != null)
                 foreach (MeshFilter mf in gp.GetComponentsInChildren<MeshFilter>())
-                    if (mf.name == "blade" && mf.sharedMesh.name == "Cylinder")
+                    if (mf.name.Contains("blade") && mf.sharedMesh.name == "Cylinder")
                         round = true;
             check(round, "ghost racket blade is round");
             if (gp != null)
                 ghost_paddle_start = gp.transform.position;
             ghost_time_start = coach.coach_ghost.time;
-            check(GameObject.Find("stand here marker") != null, "stand here marker created");
+            {
+                GameObject marker = GameObject.Find("stand here marker");
+                check(marker != null && !marker.GetComponent<MeshRenderer>().enabled,
+                      "the floor marker exists but is hidden by default");
+            }
             next_phase();
         }
         else if (phase == 7 && t > 0.8f) {
