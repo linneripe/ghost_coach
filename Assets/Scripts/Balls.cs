@@ -17,6 +17,11 @@ public class Balls : MonoBehaviour {
 	void Start () {
 		balls.Add (ball);
 		cur_ball = 0;
+		// The ball placed in the scene starts above the table and would land
+		// and lie there until the third ball of the pool is used.  Keep it out
+		// of play until new_ball() needs it.
+		ball.freeze = true;
+		ball.gameObject.SetActive (false);
 	}
 
 	public Ball new_ball () {

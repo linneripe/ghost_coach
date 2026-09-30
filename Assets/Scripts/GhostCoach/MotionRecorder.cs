@@ -12,6 +12,7 @@ public class MotionRecorder : MonoBehaviour {
 
     MotionClip clip;
     float start_time;
+    public string discarded;      // Why the last recording was not saved, or null.
 
     public bool recording {
         get { return clip != null; }
@@ -41,10 +42,23 @@ public class MotionRecorder : MonoBehaviour {
     public MotionClip stop_recording() {
         MotionClip c = clip;
         clip = null;
-        if (c == null || c.frames.Count == 0)
+        discarded = null;
+        if (c == null || c.frames.Count == 0) {
+            discarded = "Inget inspelat";
             return null;
+        }
+        if (!c.usable_as_coach) {
+            discarded = "Spela minst " + Mathf.RoundToInt(MotionClip.min_coach_seconds)
+                        + " s med några bollträffar";
+            return null;
+        }
         c.save();
         return c;
+    }
+
+    // Stop without saving.
+    public void cancel_recording() {
+        clip = null;
     }
 
     // Record after Play.Update() has moved the paddle and ball.

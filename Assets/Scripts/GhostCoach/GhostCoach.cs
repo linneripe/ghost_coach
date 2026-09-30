@@ -12,7 +12,7 @@ using UnityEngine.InputSystem;
 // (right controller A, P on the keyboard).  The right controller B button
 // (K on the keyboard) starts and stops recording a coach clip.  Clicking
 // the right thumbstick (L on the keyboard) changes the coach's playback
-// speed.  Holding the left thumbstick in (N on the keyboard) starts a
+// speed.  Backspace (desktop only) resets phase, speed and view.  Holding the left thumbstick in (N on the keyboard) starts a
 // session for the next test participant (Experiment).
 //
 // Added at run time to the object holding the PlayerInput so it receives
@@ -30,6 +30,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionClip recorded_clip;     // As recorded (or the mock coach).
     public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
     public Experiment experiment;
+    public bool allow_recording = false;
     bool player_left_handed;
     bool bindings_set = false;
     bool variant_applied = false;
@@ -71,18 +72,26 @@ public class GhostCoach : MonoBehaviour {
     }
 
     void Start() {
-        // A coach recorded on this headset, else a clip shipped with the app
-        // (mocap), else a made-up forehand drive so both phases can be tried.
-        MotionClip c = MotionClip.load_latest();
+        // A clip shipped with the app (mocap), else a made-up forehand drive
+        // so both phases can be tried.  Only if recording is turned on in
+        // experiment.json is a coach recorded on this headset used first.
+        allow_recording = ExperimentConfig.load_or_create().allow_recording;
+        string record_hint = (allow_recording ? "   B: spela in egen coach" : "");
+        MotionClip c = (allow_recording ? MotionClip.load_latest() : null);
         if (c == null) {
             c = MotionClip.load_bundled();
             if (c != null)
-                show_message("Coach: " + c.name + "\nA: byt fas   B: spela in egen coach");
+                show_message("Coach: " + c.name + "\nA: byt fas" + record_hint);
         }
         if (c == null) {
             float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
             c = MockCoach.forehand_drive(table, ball_radius);
-            show_message("Demo-coach (påhittad forehand)\nA: byt fas   B: spela in riktig coach");
+            show_message("Demo-coach (påhittad forehand)\nA: byt fas" + record_hint);
+        }
+        if (!c.has_ball) {
+            // Mocap has no ball: add one that meets the coach's racket.
+            float radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
+            BallSynth.add(c, table, radius, 0.5f * play.paddle_hand.held_paddle.thickness);
         }
         Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
                   + c.contact_times().Count + " strokes");
@@ -184,6 +193,10 @@ public class GhostCoach : MonoBehaviour {
     }
 
     public void toggle_recording() {
+        if (!allow_recording) {
+            show_message("Inspelning av coach är avstängd\n(allow_recording i experiment.json)");
+            return;
+        }
         if (!recorder.recording) {
             recorder.start_recording();
             update_ghost();           // Hide the replay and the path, and do not score.
@@ -192,13 +205,13 @@ public class GhostCoach : MonoBehaviour {
             experiment.log_event("recording_start", "");
         } else {
             MotionClip c = recorder.stop_recording();
-            experiment.log_event("recording_stop", c != null ? c.name : "nothing recorded");
+            experiment.log_event("recording_stop", c != null ? c.name : "not saved: " + recorder.discarded);
             if (c != null) {
                 set_coach(c);
                 show_message("Sparade " + c.name + "\n" + c.contact_times().Count + " slag, "
                              + c.duration.ToString("F0") + " s");
             } else
-                show_message("Inget inspelat");
+                show_message("Ingen coach sparad\n" + recorder.discarded);
             play.paddle_hand.wand.haptic_pulses(3, 0.04f, 0.8f, 0.06f);
             if (c == null)
                 update_ghost();
@@ -252,6 +265,17 @@ public class GhostCoach : MonoBehaviour {
         }
     }
 
+    // Back to the start: phase 1, normal coach speed, view at the stand
+    // marker.  For when buttons have been pressed at random.
+    public void reset() {
+        recorder.cancel_recording();
+        coach_ghost.speed = 0.5f;
+        phase = Phase.Coach;
+        update_ghost();
+        show_message("Återställd\nFas 1: Titta på coachen");
+        experiment.log_event("reset", "");
+    }
+
     public void change_speed() {
         float s = coach_ghost.next_speed();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
@@ -275,6 +299,10 @@ public class GhostCoach : MonoBehaviour {
 
     public void OnGhostSpeed() {
         change_speed();
+    }
+
+    public void OnGhostReset() {
+        reset();
     }
 
     public void OnGhostNewSession() {

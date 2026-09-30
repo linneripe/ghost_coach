@@ -24,6 +24,7 @@ public static class ExperimentTest {
             check_config();
             check_schedule();
             check_state();
+            check_clips();
             check_csv();
         } finally {
             GhostCoachFiles.root_override = null;
@@ -73,6 +74,43 @@ public static class ExperimentTest {
         c.counterbalance = true;
         c.schedule = new List<string> { "A", "B", "C" };
         check(string.Join(" ", c.schedule_for(2)) == "C B A", "three variants are swapped first with last");
+    }
+
+    // Accidental recordings must not become the coach.
+    static void check_clips() {
+        check(!ExperimentConfig.defaults().allow_recording, "recording a coach is off by default");
+        string dir = MotionClip.clips_directory();
+        Directory.CreateDirectory(dir);
+        MotionClip good = clip(6f, true);
+        good.name = "good";
+        MotionClip no_strokes = clip(6f, false);
+        MotionClip too_short = clip(1f, true);
+        check(good.usable_as_coach && !no_strokes.usable_as_coach && !too_short.usable_as_coach,
+              "a clip needs 3 s and a stroke to be usable as a coach");
+        File.WriteAllText(Path.Combine(dir, "a_good.json"), JsonUtility.ToJson(good));
+        File.SetLastWriteTime(Path.Combine(dir, "a_good.json"), System.DateTime.Now.AddMinutes(-10));
+        File.WriteAllText(Path.Combine(dir, "b_short.json"), JsonUtility.ToJson(too_short));
+        File.WriteAllText(Path.Combine(dir, "c_nostroke.json"), JsonUtility.ToJson(no_strokes));
+        MotionClip loaded = MotionClip.load_latest();
+        check(loaded != null && loaded.name == "good", "newer accidental clips are skipped, loaded " + (loaded == null ? "none" : loaded.name));
+        File.Delete(Path.Combine(dir, "a_good.json"));
+        check(MotionClip.load_latest() == null, "only accidental clips means no recorded coach");
+    }
+
+    static MotionClip clip(float seconds, bool with_stroke) {
+        MotionClip c = new MotionClip();
+        for (int i = 0 ; i <= (int)(seconds * 10) ; ++i) {
+            MotionFrame f = new MotionFrame();
+            f.t = 0.1f * i;
+            c.frames.Add(f);
+        }
+        if (with_stroke) {
+            MotionEvent e = new MotionEvent();
+            e.t = 1f;
+            e.type = "contact";
+            c.events.Add(e);
+        }
+        return c;
     }
 
     static void check_state() {

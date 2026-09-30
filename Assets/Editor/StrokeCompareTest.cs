@@ -78,6 +78,8 @@ public static class StrokeCompareTest {
         check_value(f.head_position.y > 1.3f && f.head_position.z < -1.37f,
                     "mock coach head behind the end line, z", f.head_position.z);
 
+        check_ball_synth();
+
         // Left handed version: mirrored about the table center line.
         MotionClip left = mock.mirrored(0f);
         MotionFrame lf = left.sample(contacts[1]);
@@ -92,6 +94,66 @@ public static class StrokeCompareTest {
         check_value((back.paddle_position - f.paddle_position).magnitude < 1e-4f
                     && Quaternion.Angle(back.paddle_rotation, f.paddle_rotation) < 0.01f,
                     "mirroring twice gives the original, error m", (back.paddle_position - f.paddle_position).magnitude);
+    }
+
+    // A clip without a ball, as from mocap, gets a ball that meets the
+    // racket at every stroke, forehand and backhand.
+    static void check_ball_synth() {
+        float top_y = 0.76f, half = 1.37f, radius = 0.02f, half_thickness = 0.008f;
+        MotionClip clip = MockCoach.forehand_drive(Vector3.zero, top_y, half, radius);
+        clip.events[2].type = "backhand";
+        foreach (MotionFrame f in clip.frames) {
+            f.ball_in_play = false;
+            f.ball_position = Vector3.zero;
+        }
+        clip.has_ball = false;
+        BallSynth.add(clip, Vector3.zero, top_y, half, radius, half_thickness);
+        check_value(clip.has_ball, "clip without a ball gets one", clip.has_ball ? 1f : 0f);
+
+        float worst_gap = 0f, worst_side = 1f, below = 0f, fastest = 0f;
+        int missing = 0;
+        foreach (MotionEvent e in clip.events) {
+            MotionFrame f = clip.sample(e.t);
+            if (!f.ball_in_play) { missing += 1; continue; }
+            float gap = (f.ball_position - f.paddle_position).magnitude;
+            worst_gap = Mathf.Max(worst_gap, Mathf.Abs(gap - (radius + half_thickness)));
+            worst_side = Mathf.Min(worst_side, f.ball_position.z - f.paddle_position.z);
+        }
+        check_value(missing == 0, "ball is in play at every stroke, strokes without", missing);
+        check_value(worst_gap < 0.002f, "ball touches the racket face at every stroke, error m", worst_gap);
+        check_value(worst_side > 0f, "ball is on the opponent's side of the racket, smallest z gap m", worst_side);
+
+        MotionFrame previous = null;
+        foreach (MotionFrame f in clip.frames) {
+            if (f.ball_in_play && Mathf.Abs(f.ball_position.x) < 0.7625f && Mathf.Abs(f.ball_position.z) < half)
+                below = Mathf.Min(below, f.ball_position.y - (top_y + radius) + 0.01f);
+            if (previous != null && previous.ball_in_play && f.ball_in_play)
+                fastest = Mathf.Max(fastest, (f.ball_position - previous.ball_position).magnitude / (f.t - previous.t));
+            previous = f;
+        }
+        check_value(below >= 0f, "ball never goes through the table, deepest m", below);
+        check_value(fastest < 14f, "ball never teleports, fastest m/s", fastest);
+
+        int bounces = 0;
+        float lowest = 10f;
+        foreach (MotionFrame f in clip.frames)
+            if (f.ball_in_play && Mathf.Abs(f.ball_position.x) < 0.7625f && Mathf.Abs(f.ball_position.z) < half)
+                lowest = Mathf.Min(lowest, f.ball_position.y - (top_y + radius));
+        check_value(lowest < 0.05f, "ball comes down to the table surface, closest m above it", lowest);
+        for (int i = 1 ; i < clip.frames.Count - 1 ; ++i) {
+            MotionFrame a = clip.frames[i-1], b = clip.frames[i], c = clip.frames[i+1];
+            if (a.ball_in_play && b.ball_in_play && c.ball_in_play
+                && b.ball_position.y <= top_y + radius + 0.06f      // A bounce falls between frames.
+                && b.ball_position.y < a.ball_position.y && b.ball_position.y <= c.ball_position.y)
+                bounces += 1;
+        }
+        // Two bounces per interval: one on each half, for 5 strokes.
+        check_value(bounces >= 8 && bounces <= 10, "ball bounces on the table twice per stroke, bounces", bounces);
+
+        MotionClip again = clip.mirrored(0f);
+        MotionFrame m = again.sample(clip.events[0].t), o = clip.sample(clip.events[0].t);
+        check_value(again.has_ball && Mathf.Abs(m.ball_position.x + o.ball_position.x) < 1e-4f,
+                    "mirrored clip keeps the ball, mirrored x", m.ball_position.x);
     }
 
     static void check_value(bool ok, string what, float value) {
