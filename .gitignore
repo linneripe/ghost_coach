@@ -86,3 +86,8 @@ crashlytics-build.properties
 # AI assistant context files (local only, never commit)
 CLAUDE.md
 AGENTS.md
+
+# Coach clips converted from mocap contain a person's motion data: share them
+# in LU Box, not git (see Tools/blender/export_coach_clip.py)
+/Assets/Resources/GhostCoach/clips/
+/Assets/Resources/GhostCoach/clips.meta

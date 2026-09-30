@@ -71,10 +71,15 @@ public class GhostCoach : MonoBehaviour {
     }
 
     void Start() {
+        // A coach recorded on this headset, else a clip shipped with the app
+        // (mocap), else a made-up forehand drive so both phases can be tried.
         MotionClip c = MotionClip.load_latest();
         if (c == null) {
-            // No recording yet: use a made-up forehand drive so both phases
-            // can be tried.  Recording a real coach replaces it.
+            c = MotionClip.load_bundled();
+            if (c != null)
+                show_message("Coach: " + c.name + "\nA: byt fas   B: spela in egen coach");
+        }
+        if (c == null) {
             float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
             c = MockCoach.forehand_drive(table, ball_radius);
             show_message("Demo-coach (påhittad forehand)\nA: byt fas   B: spela in riktig coach");

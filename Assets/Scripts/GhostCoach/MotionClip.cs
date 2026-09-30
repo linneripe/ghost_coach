@@ -16,6 +16,12 @@ public class MotionClip {
     public string source;            // "quest" or "qualisys"
     public bool left_handed;
     public string recorded;          // Date and time, ISO 8601.
+    public bool has_ball = true;     // Mocap clips have no ball and no opponent.
+    public bool has_opponent = true;
+    // Body joints in each frame's joints array, e.g. "RightForeArm" for the
+    // right elbow (Mixamo bone names).  Empty for Quest recordings, which
+    // only have the head and the paddle.
+    public List<string> joint_names = new List<string>();
     public List<MotionFrame> frames = new List<MotionFrame>();
     public List<MotionEvent> events = new List<MotionEvent>();
 
@@ -64,6 +70,9 @@ public class MotionClip {
         m.source = source;
         m.left_handed = !left_handed;
         m.recorded = recorded;
+        m.has_ball = has_ball;
+        m.has_opponent = has_opponent;
+        m.joint_names = joint_names;
         foreach (MotionFrame f in frames)
             m.frames.Add(f.mirrored(center_x));
         m.events.AddRange(events);
@@ -88,6 +97,15 @@ public class MotionClip {
         if (!File.Exists(path))
             return null;
         return JsonUtility.FromJson<MotionClip>(File.ReadAllText(path));
+    }
+
+    // Clips shipped with the app in Assets/Resources/GhostCoach/clips, e.g.
+    // converted from Qualisys with Tools/blender/export_coach_clip.py.
+    public static MotionClip load_bundled() {
+        TextAsset[] assets = Resources.LoadAll<TextAsset>("GhostCoach/clips");
+        if (assets.Length == 0)
+            return null;
+        return JsonUtility.FromJson<MotionClip>(assets[0].text);
     }
 
     // Most recently written clip, or null if there are none.
@@ -119,6 +137,7 @@ public class MotionFrame {
     public Vector3 ball_position;
     public Vector3 robot_paddle_position;  // Opponent, so a rally can be replayed.
     public Quaternion robot_paddle_rotation;
+    public Vector3[] joints;               // Body joints, see MotionClip.joint_names.
 
     public MotionFrame mirrored(float center_x) {
         MotionFrame m = new MotionFrame();
@@ -131,6 +150,11 @@ public class MotionFrame {
         m.ball_position = mirror(ball_position, center_x);
         m.robot_paddle_position = mirror(robot_paddle_position, center_x);
         m.robot_paddle_rotation = mirror(robot_paddle_rotation);
+        if (joints != null) {
+            m.joints = new Vector3[joints.Length];
+            for (int i = 0 ; i < joints.Length ; ++i)
+                m.joints[i] = mirror(joints[i], center_x);
+        }
         return m;
     }
 
@@ -155,6 +179,11 @@ public class MotionFrame {
         m.ball_position = Vector3.Lerp(a.ball_position, b.ball_position, f);
         m.robot_paddle_position = Vector3.Lerp(a.robot_paddle_position, b.robot_paddle_position, f);
         m.robot_paddle_rotation = Quaternion.Slerp(a.robot_paddle_rotation, b.robot_paddle_rotation, f);
+        if (a.joints != null && b.joints != null && a.joints.Length == b.joints.Length) {
+            m.joints = new Vector3[a.joints.Length];
+            for (int i = 0 ; i < m.joints.Length ; ++i)
+                m.joints[i] = Vector3.Lerp(a.joints[i], b.joints[i], f);
+        }
         return m;
     }
 }

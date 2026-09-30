@@ -30,6 +30,20 @@ public class CoachGhost : MonoBehaviour {
     Transform ghost_root, ghost_paddle, ghost_robot_paddle;
     Transform head, torso, arm, ball, stand_marker;
 
+    // Body drawn from recorded joints when the clip has them (mocap).
+    // Pairs of Mixamo joint names and the limb width in meters.
+    static readonly string[,] bones = {
+        {"Hips", "Neck"}, {"LeftArm", "RightArm"}, {"LeftUpLeg", "RightUpLeg"},
+        {"LeftArm", "LeftForeArm"}, {"LeftForeArm", "LeftHand"},
+        {"RightArm", "RightForeArm"}, {"RightForeArm", "RightHand"},
+        {"LeftUpLeg", "LeftLeg"}, {"LeftLeg", "LeftFoot"}, {"LeftFoot", "LeftToeBase"},
+        {"RightUpLeg", "RightLeg"}, {"RightLeg", "RightFoot"}, {"RightFoot", "RightToeBase"},
+    };
+    static readonly float[] bone_widths = { 0.26f, 0.1f, 0.14f, 0.09f, 0.07f, 0.09f, 0.07f,
+                                            0.13f, 0.1f, 0.08f, 0.13f, 0.1f, 0.08f };
+    Transform[] limbs;
+    int[] limb_from, limb_to;
+
     public bool showing {
         get { return ghost_root != null && ghost_root.gameObject.activeSelf; }
     }
@@ -59,7 +73,9 @@ public class CoachGhost : MonoBehaviour {
         set_loop();
         playback_time = loop_start;
         place_stand_marker();
+        map_joints();
         ghost_root.gameObject.SetActive(true);
+        ghost_robot_paddle.gameObject.SetActive(clip.has_opponent);
         Update();
     }
 
@@ -111,17 +127,24 @@ public class CoachGhost : MonoBehaviour {
         Vector3 right = Vector3.Cross(Vector3.up, forward);
         head.SetPositionAndRotation(head_position, head_rotation);
 
-        Vector3 neck = head_position - 0.15f * Vector3.up;
-        Vector3 hips = head_position - 0.75f * Vector3.up;
-        place_limb(torso, neck, hips, 0.3f);
+        if (limb_from != null && f.joints != null) {
+            // Real joints from mocap.
+            for (int i = 0 ; i < limbs.Length ; ++i)
+                place_limb(limbs[i], TableSpace.to_world(table, f.joints[limb_from[i]]),
+                           TableSpace.to_world(table, f.joints[limb_to[i]]), bone_widths[i]);
+        } else {
+            Vector3 neck = head_position - 0.15f * Vector3.up;
+            Vector3 hips = head_position - 0.75f * Vector3.up;
+            place_limb(torso, neck, hips, 0.3f);
 
-        // Straight arm from the shoulder on the paddle side to the handle.
-        float side = (clip.left_handed ? -1f : 1f);
-        Vector3 shoulder = neck - 0.05f * Vector3.up + 0.2f * side * right;
-        Vector3 hand = paddle_position - 0.12f * (paddle_rotation * Vector3.up);
-        place_limb(arm, shoulder, hand, 0.08f);
+            // Straight arm from the shoulder on the paddle side to the handle.
+            float side = (clip.left_handed ? -1f : 1f);
+            Vector3 shoulder = neck - 0.05f * Vector3.up + 0.2f * side * right;
+            Vector3 hand = paddle_position - 0.12f * (paddle_rotation * Vector3.up);
+            place_limb(arm, shoulder, hand, 0.08f);
+        }
 
-        ball.gameObject.SetActive(f.ball_in_play);
+        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play);
         ball.position = TableSpace.to_world(table, f.ball_position);
     }
 
@@ -132,6 +155,39 @@ public class CoachGhost : MonoBehaviour {
         if (d.sqrMagnitude > 1e-6f)
             limb.rotation = Quaternion.FromToRotation(Vector3.up, d);
         limb.localScale = new Vector3(width, 0.5f * d.magnitude, width);  // Primitive height is 2.
+    }
+
+    // Use the clip's recorded joints for the body if it has them, otherwise
+    // the torso and arm estimated from the head and paddle.
+    void map_joints() {
+        int n = bone_widths.Length;
+        limb_from = limb_to = null;
+        if (clip.joint_names != null && clip.joint_names.Count > 0) {
+            int[] from = new int[n], to = new int[n];
+            bool all = true;
+            for (int i = 0 ; i < n ; ++i) {
+                from[i] = clip.joint_names.IndexOf(bones[i, 0]);
+                to[i] = clip.joint_names.IndexOf(bones[i, 1]);
+                all = all && from[i] >= 0 && to[i] >= 0;
+            }
+            if (all) {
+                limb_from = from;
+                limb_to = to;
+            }
+        }
+        bool mocap = (limb_from != null);
+        if (mocap && limbs == null) {
+            limbs = new Transform[n];
+            Material ghost = GhostVisuals.material("ghost");
+            for (int i = 0 ; i < n ; ++i)
+                limbs[i] = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost " + bones[i, 0] + " " + bones[i, 1],
+                                                  ghost, ghost_root);
+        }
+        if (limbs != null)
+            foreach (Transform limb in limbs)
+                limb.gameObject.SetActive(mocap);
+        torso.gameObject.SetActive(!mocap);
+        arm.gameObject.SetActive(!mocap);
     }
 
     void place_stand_marker() {
