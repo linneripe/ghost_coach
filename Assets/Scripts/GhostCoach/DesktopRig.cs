@@ -214,7 +214,18 @@ public class DesktopRig : MonoBehaviour {
             if (keys.pKey.wasPressedThisFrame) coach.OnGhostTogglePhase();
             if (keys.kKey.wasPressedThisFrame) coach.OnGhostRecord();
             if (keys.lKey.wasPressedThisFrame) coach.OnGhostSpeed();
+            if (keys.nKey.wasPressedThisFrame) coach.OnGhostNewSession();
         }
+        // Same as choosing Right or Left in the settings menu.
+        if (keys.vKey.wasPressedThisFrame && play.settings != null)
+            set_left_handed(play.settings, !play.paddle_hand.wand.left);
+    }
+
+    // The Right and Left toggles share a toggle group, but the group only
+    // switches the other one off while the menu is shown, so do it here.
+    public static void set_left_handed(SettingsUI settings, bool left) {
+        (left ? settings.righthanded : settings.lefthanded).isOn = false;
+        (left ? settings.lefthanded : settings.righthanded).isOn = true;
     }
 
     void update_hands(float delta_t) {
@@ -301,9 +312,10 @@ public class DesktopRig : MonoBehaviour {
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
             "Tab: settings menu     Left click: press menu buttons\n" +
             "P: coach/path phase    K: start/stop recording coach\n" +
-            "L: coach speed 100/50/25%\n" +
+            "L: coach speed 100/50/25%   V: right/left handed\n" +
+            "N: next test participant\n" +
             "H: hide help";
-        GUI.Box(new Rect(10, 10, 420, 155), "");
-        GUI.Label(new Rect(18, 14, 410, 135), help);
+        GUI.Box(new Rect(10, 10, 420, 185), "");
+        GUI.Label(new Rect(18, 14, 410, 170), help);
     }
 }

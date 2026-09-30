@@ -67,6 +67,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "GhostNewSession",
+                    "type": "Button",
+                    "id": "6f2d4ab4-e3a6-4f2e-8559-d1b9fadaca95",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -166,6 +175,17 @@
                     "processors": "",
                     "groups": "PlayControls",
                     "action": "GhostSpeed",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c7df65e3-1108-4393-88a0-b7ea43767a8f",
+                    "path": "<XRController>{LeftHand}/thumbstickClicked",
+                    "interactions": "Hold(duration=1.5)",
+                    "processors": "",
+                    "groups": "PlayControls",
+                    "action": "GhostNewSession",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }
