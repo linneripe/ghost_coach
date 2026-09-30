@@ -153,7 +153,7 @@ public class MotionClip {
     public static MotionClip load_bundled() {
         // The folder also holds the .body.bytes character meshes.
         foreach (TextAsset a in Resources.LoadAll<TextAsset>("GhostCoach/clips"))
-            if (!a.name.EndsWith(".body"))
+            if (!a.name.EndsWith(".body") && a.text.TrimStart().StartsWith("{"))
                 return JsonUtility.FromJson<MotionClip>(a.text);
         return null;
     }
