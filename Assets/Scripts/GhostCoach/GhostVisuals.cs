@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // Shared helpers for building the semi-transparent ghost visuals used in
@@ -10,6 +11,15 @@ public static class GhostVisuals {
     // the box.
     public static bool round_racket = true;
     static Mesh cylinder_mesh;
+
+    // The green disc on the floor showing where to stand.  Off by default:
+    // it is only needed when instructing a new tester.
+    public static bool show_stand_marker = false;
+
+    // Renderers hidden by the player's "hide racket and ball" toggle.  The
+    // ghost racket is copied from the player's paddle and must still
+    // include them.
+    public static HashSet<Renderer> hidden_by_toggle = new HashSet<Renderer>();
 
     static Mesh cylinder() {
         if (cylinder_mesh == null) {
@@ -38,6 +48,8 @@ public static class GhostVisuals {
     public static Transform stand_marker(string name, Transform parent) {
         Transform t = primitive(PrimitiveType.Cylinder, name, material("stand_marker"), parent);
         t.localScale = new Vector3(0.5f, 0.003f, 0.5f);
+        // Hidden but still there: desktop mode uses its position.
+        t.GetComponent<MeshRenderer>().enabled = show_stand_marker;
         return t;
     }
 
@@ -76,7 +88,7 @@ public static class GhostVisuals {
         Quaternion inverse = Quaternion.Inverse(source.rotation);
         foreach (MeshRenderer r in source.GetComponentsInChildren<MeshRenderer>()) {
             MeshFilter mf = r.GetComponent<MeshFilter>();
-            if (!r.enabled || mf == null || mf.sharedMesh == null)
+            if ((!r.enabled && !hidden_by_toggle.Contains(r)) || mf == null || mf.sharedMesh == null)
                 continue;
             GameObject g = new GameObject(r.name);
             g.transform.SetParent(copy, false);
@@ -97,6 +109,32 @@ public static class GhostVisuals {
             g.AddComponent<MeshRenderer>().sharedMaterial = m;
         }
         return copy;
+    }
+
+    // Draw a paddle round: for each box shaped blade, rubber and sponge add
+    // a disc as a child and hide the box.  The boxes themselves are not
+    // touched, since Bouncer reads their position and size for the hit area.
+    public static void make_racket_round(Transform paddle) {
+        if (!round_racket)
+            return;
+        foreach (MeshRenderer r in paddle.GetComponentsInChildren<MeshRenderer>(true)) {
+            MeshFilter mf = r.GetComponent<MeshFilter>();
+            if (r.name.StartsWith("round ") || mf == null || mf.sharedMesh == null || mf.sharedMesh.name != "Cube")
+                continue;
+            GameObject g = new GameObject("round " + r.name);
+            g.layer = r.gameObject.layer;
+            g.transform.SetParent(r.transform, false);
+            // Cylinder axis (y) turned to the box's thin axis (z).  In the
+            // box's own scale, x and z are the diameters and y is half the
+            // height, so 1, 0.5, 1 gives a disc as thick as the box.
+            g.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            g.transform.localScale = new Vector3(1f, 0.5f, 1f);
+            g.AddComponent<MeshFilter>().sharedMesh = cylinder();
+            MeshRenderer round = g.AddComponent<MeshRenderer>();
+            round.sharedMaterials = r.sharedMaterials;
+            round.enabled = r.enabled;
+            r.enabled = false;
+        }
     }
 
     // Thin line through points, e.g. a paddle path.

@@ -20,6 +20,7 @@ public static class DesktopSmokeTest {
     static Vector3 ghost_paddle_start;
     static float ghost_time_start;
     static int free_haptic_before;
+    static List<bool> paddle_states = new List<bool>();
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -84,6 +85,34 @@ public static class DesktopSmokeTest {
                 if (b.gameObject.activeInHierarchy && !play.ball_held(b))
                     loose += 1;
             check(loose == 0, "no ball lying around at the start, loose balls " + loose);
+
+            // The racket in the hand is drawn round, with the hit area unchanged.
+            Paddle own = play.paddle_hand.held_paddle;
+            bool round_rubber = false, box_showing = false;
+            foreach (MeshFilter mf in own.GetComponentsInChildren<MeshFilter>(true)) {
+                if (mf.name == "round rubber red" && mf.sharedMesh.name == "Cylinder" && mf.GetComponent<MeshRenderer>().enabled)
+                    round_rubber = true;
+                if (mf.sharedMesh != null && mf.sharedMesh.name == "Cube" && mf.GetComponent<MeshRenderer>().enabled)
+                    box_showing = true;
+            }
+            check(round_rubber && !box_showing, "the racket in the hand is round, no box showing");
+            Vector3 rubber = own.forehand_rubber().transform.localScale;
+            check(Mathf.Approximately(rubber.x, 0.15f) && Mathf.Approximately(rubber.y, 0.16f)
+                  && Mathf.Approximately(rubber.z, 0.002f),
+                  "hit area is unchanged, rubber scale " + rubber.ToString("F3"));
+
+            // Hide the racket and the ball in the hand.
+            GhostCoach hide_gc = Object.FindFirstObjectByType<GhostCoach>();
+            check(!hide_gc.hand_visuals.hidden, "racket and ball in the hand are shown by default");
+            paddle_states.Clear();
+            foreach (MeshRenderer r in own.GetComponentsInChildren<MeshRenderer>(true))
+                paddle_states.Add(r.enabled);
+            hide_gc.OnGhostToggleHands();
+            bool all_off = true;
+            foreach (MeshRenderer r in own.GetComponentsInChildren<MeshRenderer>(true))
+                if (r.enabled)
+                    all_off = false;
+            check(hide_gc.hand_visuals.hidden && all_off, "toggle hides the racket in the hand");
             if (rig == null) { finish(); return; }
             save_camera_view(rig.head_camera, "Logs/smoke_player_view.png");
             GhostCoach gc = Object.FindFirstObjectByType<GhostCoach>();
@@ -95,6 +124,18 @@ public static class DesktopSmokeTest {
                 if (cp != null)
                     save_view(gc.coach_ghost.player_spot + 1.6f * Vector3.up, cp.transform.position, 60f,
                               "Logs/smoke_coach_contact.png");
+                if (gc.coach_clip.has_bones)
+                    check_body(gc, contacts.Count > 0 ? contacts[0] : 1f);
+                // The whole figure from the front-left, further away.
+                if (gc.coach_ghost.body != null) {
+                    Vector3 hips = gc.coach_ghost.body.bone("mixamorig:Hips").position;
+                    Vector3 side = gc.coach_ghost.player_spot - hips;
+                    side.y = 0f;
+                    save_view(hips + 2.6f * side.normalized + 0.5f * Vector3.up, hips + 0.3f * Vector3.up, 45f,
+                              "Logs/smoke_coach_body.png");
+                    save_view(hips + 2.4f * Vector3.forward + 0.8f * Vector3.up + 0.6f * Vector3.right, hips + 0.3f * Vector3.up, 45f,
+                              "Logs/smoke_coach_body2.png");
+                }
             }
             check(gc != null && gc.coach_clip != null && gc.coach_clip.has_ball, "coach clip has a ball, recorded or made up");
             if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
@@ -107,6 +148,30 @@ public static class DesktopSmokeTest {
             next_phase();
         }
         else if (phase == 1 && t > 0.2f) {
+            Ball in_hand = play.free_hand.held_ball;
+            check(in_hand != null && !in_hand.GetComponent<MeshRenderer>().enabled, "toggle hides the ball in the hand");
+            {
+                GhostCoach g1 = Object.FindFirstObjectByType<GhostCoach>();
+                Paddle own1 = play.paddle_hand.held_paddle;
+                g1.OnGhostToggleHands();
+                MeshRenderer[] now = own1.GetComponentsInChildren<MeshRenderer>(true);
+                bool same = (now.Length == paddle_states.Count);
+                bool box_showing = false;
+                for (int k = 0 ; same && k < now.Length ; ++k) {
+                    if (now[k].enabled != paddle_states[k])
+                        same = false;
+                    MeshFilter mfk = now[k].GetComponent<MeshFilter>();
+                    if (now[k].enabled && mfk != null && mfk.sharedMesh != null && mfk.sharedMesh.name == "Cube")
+                        box_showing = true;
+                }
+                check(!g1.hand_visuals.hidden && same && !box_showing,
+                      "toggle again restores the round racket as it was, " + now.Length + " parts");
+                check(!ExperimentState.load().hide_hand_visuals, "the choice is remembered");
+                // The racket in the hand, forehand side, from close by.
+                Vector3 normal = own1.forehand_normal();
+                save_view(own1.position + 0.35f * normal + 0.08f * Vector3.up, own1.position, 40f,
+                          "Logs/smoke_own_racket.png");
+            }
             paddle_start = play.paddle_hand.held_paddle.transform.position;
             rig.set_pointer(new Vector2(0.8f, 0.3f));
             check(play.free_hand.holding_ball(), "ball held in free hand at start");
@@ -125,6 +190,7 @@ public static class DesktopSmokeTest {
             check((p - paddle_start).magnitude > 0.05f,
                   "paddle follows pointer, moved " + (p - paddle_start).magnitude.ToString("F2") + " m");
             check(!play.free_hand.holding_ball(), "ball released by toss");
+            check(tossed_ball == null || tossed_ball.GetComponent<MeshRenderer>().enabled, "the ball is visible again");
             if (tossed_ball != null)
                 check(toss_max_height > 0.15f,
                       "tossed ball rose " + toss_max_height.ToString("F2") + " m");
@@ -194,13 +260,17 @@ public static class DesktopSmokeTest {
             bool round = false;
             if (gp != null)
                 foreach (MeshFilter mf in gp.GetComponentsInChildren<MeshFilter>())
-                    if (mf.name == "blade" && mf.sharedMesh.name == "Cylinder")
+                    if (mf.name.Contains("blade") && mf.sharedMesh.name == "Cylinder")
                         round = true;
             check(round, "ghost racket blade is round");
             if (gp != null)
                 ghost_paddle_start = gp.transform.position;
             ghost_time_start = coach.coach_ghost.time;
-            check(GameObject.Find("stand here marker") != null, "stand here marker created");
+            {
+                GameObject marker = GameObject.Find("stand here marker");
+                check(marker != null && !marker.GetComponent<MeshRenderer>().enabled,
+                      "the floor marker exists but is hidden by default");
+            }
             next_phase();
         }
         else if (phase == 7 && t > 0.8f) {
@@ -357,6 +427,65 @@ public static class DesktopSmokeTest {
         System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
         Object.DestroyImmediate(cam.gameObject);
         Debug.Log("DesktopSmokeTest saved screenshot " + path);
+    }
+
+    // The coach drawn as the character mesh must be where the clip's joints
+    // are, as tall as the person, and mirrored for a left handed player.
+    static void check_body(GhostCoach gc, float t) {
+        CoachBody body = gc.coach_ghost.body;
+        check(body != null && body.renderer != null, "coach is drawn as the character mesh");
+        if (body == null)
+            return;
+        Table table_component = Object.FindFirstObjectByType<Table>();
+        Transform table = table_component.transform;
+        MotionFrame f = gc.coach_clip.sample(t);
+        List<string> names = gc.coach_clip.joint_names;
+        float worst = 0f;
+        foreach (string j in new string[] { "Hips", "Head", "RightHand", "RightForeArm", "LeftHand", "RightFoot", "LeftFoot" }) {
+            Transform bone = body.bone("mixamorig:" + j);
+            Vector3 expected = TableSpace.to_world(table, f.joints[names.IndexOf(j)]);
+            worst = Mathf.Max(worst, bone == null ? 99f : (bone.position - expected).magnitude);
+        }
+        check(worst < 0.03f, "the bones are where the clip's joints are, worst error " + worst.ToString("F3") + " m");
+
+        // Height and place of the skinned mesh.
+        Mesh baked = new Mesh();
+        body.renderer.BakeMesh(baked);
+        float min_y = 99f, max_y = -99f;
+        Vector3 sum = Vector3.zero;
+        Vector3[] vertices = baked.vertices;
+        foreach (Vector3 v in vertices) {
+            Vector3 w = body.renderer.transform.TransformPoint(v);
+            min_y = Mathf.Min(min_y, w.y);
+            max_y = Mathf.Max(max_y, w.y);
+            sum += w;
+        }
+        Vector3 centroid = sum / vertices.Length;
+        float top = TableSpace.to_world(table, f.joints[names.IndexOf("HeadTop_End")]).y;
+        float foot = Mathf.Min(TableSpace.to_world(table, f.joints[names.IndexOf("LeftFoot")]).y,
+                               TableSpace.to_world(table, f.joints[names.IndexOf("RightFoot")]).y);
+        check(max_y > top - 0.05f && max_y < top + 0.2f,
+              "mesh top " + max_y.ToString("F2") + " m matches the head top joint " + top.ToString("F2") + " m");
+        check(min_y < foot + 0.02f && min_y > foot - 0.2f,
+              "mesh bottom " + min_y.ToString("F2") + " m matches the feet " + foot.ToString("F2") + " m");
+        Vector3 hips = TableSpace.to_world(table, f.joints[names.IndexOf("Hips")]);
+        check(new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude < 0.4f,
+              "mesh is around the hips joint, " + new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude.ToString("F2") + " m off");
+        Object.Destroy(baked);
+
+        // Mirrored for a left handed player: the left hand is where the
+        // right hand was, mirrored, and back again.
+        float top_y;
+        MotionClip mirrored = gc.coach_clip.mirrored(TableSpace.center(table_component, out top_y).x);
+        body.pose(mirrored, t, table);
+        MotionFrame mf = mirrored.sample(t);
+        Vector3 left = body.bone("mixamorig:LeftHand").position;
+        Vector3 mirrored_right = TableSpace.to_world(table, mf.joints[names.IndexOf("RightHand")]);
+        check((left - mirrored_right).magnitude < 0.03f,
+              "mirrored coach: the left hand is the mirrored right hand, error " + (left - mirrored_right).magnitude.ToString("F3") + " m");
+        body.pose(gc.coach_clip, t, table);
+        check((body.bone("mixamorig:RightHand").position - TableSpace.to_world(table, f.joints[names.IndexOf("RightHand")])).magnitude < 0.03f,
+              "back to the unmirrored pose");
     }
 
     // Render from a point toward another point, for checking visuals by eye.

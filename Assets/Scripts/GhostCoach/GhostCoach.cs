@@ -12,7 +12,8 @@ using UnityEngine.InputSystem;
 // (right controller A, P on the keyboard).  The right controller B button
 // (K on the keyboard) starts and stops recording a coach clip.  Clicking
 // the right thumbstick (L on the keyboard) changes the coach's playback
-// speed.  Backspace (desktop only) resets phase, speed and view.  Holding the left thumbstick in (N on the keyboard) starts a
+// speed.  Left X (G on the keyboard) hides or shows the racket and ball in
+// the hand.  Backspace (desktop only) resets phase, speed and view.  Holding the left thumbstick in (N on the keyboard) starts a
 // session for the next test participant (Experiment).
 //
 // Added at run time to the object holding the PlayerInput so it receives
@@ -25,6 +26,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionRecorder recorder;
     public CoachGhost coach_ghost;
     public PathGuide path_guide;
+    public HandVisuals hand_visuals;
     public Table table;
     public Phase phase = Phase.Coach;
     public MotionClip recorded_clip;     // As recorded (or the mock coach).
@@ -62,7 +64,11 @@ public class GhostCoach : MonoBehaviour {
         guide.table = table.transform;
         guide.enabled = true;
 
+        HandVisuals hands = g.AddComponent<HandVisuals>();
+        hands.play = play;
+
         GhostCoach coach = g.AddComponent<GhostCoach>();
+        coach.hand_visuals = hands;
         coach.play = play;
         coach.recorder = recorder;
         coach.coach_ghost = ghost;
@@ -75,7 +81,13 @@ public class GhostCoach : MonoBehaviour {
         // A clip shipped with the app (mocap), else a made-up forehand drive
         // so both phases can be tried.  Only if recording is turned on in
         // experiment.json is a coach recorded on this headset used first.
-        allow_recording = ExperimentConfig.load_or_create().allow_recording;
+        ExperimentConfig config = ExperimentConfig.load_or_create();
+        allow_recording = config.allow_recording;
+        GhostVisuals.show_stand_marker = config.show_stand_marker;
+        GhostVisuals.round_racket = config.round_racket;
+        GhostVisuals.make_racket_round(play.paddle_hand.held_paddle.transform);
+        GhostVisuals.make_racket_round(play.robot.paddle.transform);
+        hand_visuals.apply_hidden(ExperimentState.load().hide_hand_visuals);
         string record_hint = (allow_recording ? "   B: spela in egen coach" : "");
         MotionClip c = (allow_recording ? MotionClip.load_latest() : null);
         if (c == null) {
@@ -185,8 +197,8 @@ public class GhostCoach : MonoBehaviour {
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
         else
             show_message(phase == Phase.Coach
-                         ? "Fas 1: Titta på coachen\nStå på den gröna markeringen"
-                         : "Fas 2: Din tur\nStå på markeringen, följ banan");
+                         ? "Fas 1: Titta på coachen" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : "")
+                         : "Fas 2: Din tur\n" + (GhostVisuals.show_stand_marker ? "Stå på markeringen, följ banan" : "Följ banan"));
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
         experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
@@ -276,6 +288,17 @@ public class GhostCoach : MonoBehaviour {
         experiment.log_event("reset", "");
     }
 
+    // Hide or show the racket and the ball in the hand.  Remembered.
+    public void toggle_hand_visuals() {
+        bool hide = !hand_visuals.hidden;
+        hand_visuals.apply_hidden(hide);
+        ExperimentState state = ExperimentState.load();
+        state.hide_hand_visuals = hide;
+        state.save();
+        show_message(hide ? "Racket och boll i handen dolda" : "Racket och boll i handen visas");
+        experiment.log_event("hand_visuals", hide ? "hidden" : "shown");
+    }
+
     public void change_speed() {
         float s = coach_ghost.next_speed();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
@@ -299,6 +322,10 @@ public class GhostCoach : MonoBehaviour {
 
     public void OnGhostSpeed() {
         change_speed();
+    }
+
+    public void OnGhostToggleHands() {
+        toggle_hand_visuals();
     }
 
     public void OnGhostReset() {

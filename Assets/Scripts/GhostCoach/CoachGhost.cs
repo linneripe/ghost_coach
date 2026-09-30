@@ -44,6 +44,9 @@ public class CoachGhost : MonoBehaviour {
     Transform[] limbs;
     int[] limb_from, limb_to;
 
+    // The character mesh of the mocap rig, when the clip has one.
+    public CoachBody body;
+
     public bool showing {
         get { return ghost_root != null && ghost_root.gameObject.activeSelf; }
     }
@@ -87,7 +90,7 @@ public class CoachGhost : MonoBehaviour {
     // Jump to a time in the clip, e.g. to look at a ball contact.
     public void seek(float t) {
         playback_time = Mathf.Clamp(t, 0f, clip.duration);
-        pose_ghost(clip.sample(playback_time));
+        pose_ghost(clip.sample(playback_time), playback_time);
     }
 
     // Cycle playback speed 100%, 50%, 25%.  Returns the new speed.
@@ -114,10 +117,10 @@ public class CoachGhost : MonoBehaviour {
         playback_time += speed * Time.deltaTime;
         if (playback_time > loop_end || playback_time < loop_start)
             playback_time = loop_start;
-        pose_ghost(clip.sample(playback_time));
+        pose_ghost(clip.sample(playback_time), playback_time);
     }
 
-    void pose_ghost(MotionFrame f) {
+    void pose_ghost(MotionFrame f, float t) {
         Vector3 paddle_position = TableSpace.to_world(table, f.paddle_position);
         Quaternion paddle_rotation = TableSpace.to_world(table, f.paddle_rotation);
         ghost_paddle.SetPositionAndRotation(paddle_position, paddle_rotation);
@@ -133,7 +136,9 @@ public class CoachGhost : MonoBehaviour {
         Vector3 right = Vector3.Cross(Vector3.up, forward);
         head.SetPositionAndRotation(head_position, head_rotation);
 
-        if (limb_from != null && f.joints != null) {
+        if (body != null && clip.has_bones) {
+            body.pose(clip, t, table);
+        } else if (limb_from != null && f.joints != null) {
             // Real joints from mocap.
             for (int i = 0 ; i < limbs.Length ; ++i)
                 place_limb(limbs[i], TableSpace.to_world(table, f.joints[limb_from[i]]),
@@ -189,11 +194,27 @@ public class CoachGhost : MonoBehaviour {
                 limbs[i] = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost " + bones[i, 0] + " " + bones[i, 1],
                                                   ghost, ghost_root);
         }
+        // The character mesh, if the clip comes with one.
+        bool figure = false;
+        if (clip.has_bones && !string.IsNullOrEmpty(clip.body)) {
+            if (body == null || body.resource != clip.body) {
+                if (body != null)
+                    Object.Destroy(body.root.gameObject);
+                Material skin = GhostVisuals.material("ghost_body");
+                body = CoachBody.load(clip.body, table, ghost_root, skin != null ? skin : GhostVisuals.material("ghost"));
+                if (body == null)
+                    Debug.LogWarning("GhostCoach: no character mesh " + clip.body + ", drawing the simple figure");
+            }
+            figure = (body != null);
+        }
+        if (body != null)
+            body.root.gameObject.SetActive(figure);
         if (limbs != null)
             foreach (Transform limb in limbs)
-                limb.gameObject.SetActive(mocap);
-        torso.gameObject.SetActive(!mocap);
-        arm.gameObject.SetActive(!mocap);
+                limb.gameObject.SetActive(mocap && !figure);
+        torso.gameObject.SetActive(!mocap && !figure);
+        arm.gameObject.SetActive(!mocap && !figure);
+        head.GetComponent<MeshRenderer>().enabled = !figure;
     }
 
     void place_stand_marker() {

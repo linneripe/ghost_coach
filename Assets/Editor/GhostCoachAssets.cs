@@ -18,8 +18,28 @@ public static class GhostCoachAssets {
         create_fade_material("ghost_ball", new Color(1f, 1f, 1f, 0.8f));
         create_fade_material("stand_marker", new Color(0.3f, 1f, 0.45f, 0.5f));
         create_fade_material("player_path", new Color(1f, 0.55f, 0.15f, 0.85f));
+        create_body_material("ghost_body", new Color(0.45f, 0.85f, 1f, 0.4f));
         AssetDatabase.SaveAssets();
         Debug.Log("GhostCoach materials created in " + folder);
+    }
+
+    // The coach's body: the GhostCoach/GhostSurface shader, which draws the
+    // figure as one see-through shell instead of layers seen through each other.
+    static void create_body_material(string name, Color color) {
+        string path = folder + "/" + name + ".mat";
+        Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        Shader shader = Shader.Find("GhostCoach/GhostSurface");
+        if (shader == null) {
+            Debug.LogError("GhostCoach: shader GhostCoach/GhostSurface not found");
+            return;
+        }
+        if (m == null) {
+            m = new Material(shader);
+            AssetDatabase.CreateAsset(m, path);
+        }
+        m.shader = shader;
+        m.SetColor("_Color", color);
+        EditorUtility.SetDirty(m);
     }
 
     // Standard shader in Fade mode, set up the same way as choosing

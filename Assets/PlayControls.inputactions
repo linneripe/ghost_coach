@@ -76,6 +76,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "GhostToggleHands",
+                    "type": "Button",
+                    "id": "9af2b7dd-515f-4025-9ab2-4f2f9e4ca2ae",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -186,6 +195,17 @@
                     "processors": "",
                     "groups": "PlayControls",
                     "action": "GhostNewSession",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "064b9793-535f-4ff8-8e55-593abfbb5c0b",
+                    "path": "<XRController>{LeftHand}/primaryButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "PlayControls",
+                    "action": "GhostToggleHands",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

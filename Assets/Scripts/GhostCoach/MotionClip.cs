@@ -22,6 +22,38 @@ public class MotionClip {
     // right elbow (Mixamo bone names).  Empty for Quest recordings, which
     // only have the head and the paddle.
     public List<string> joint_names = new List<string>();
+
+    // The character mesh of a mocap rig and its bone poses, so the coach
+    // can be drawn as the same figure as in Blender (see CoachBody and
+    // Tools/blender/export_coach_clip.py).  body is the name of the mesh
+    // file in Resources/GhostCoach/clips.  bone_data holds, base64 coded,
+    // bone_frames x bone_names.Count poses of 7 floats: position (table
+    // coordinates) and the rotation change from the rest pose, sampled at
+    // bone_rate poses per second, the first at clip time bone_t0.
+    public string body = "";
+    public List<string> bone_names = new List<string>();
+    public float bone_rate;
+    public float bone_t0;
+    public int bone_frames;
+    public string bone_data = "";
+    // Set on a mirrored copy: the bone poses are mirrored about the table
+    // plane x = bones_mirror_x when they are used.
+    public bool bones_mirrored;
+    public float bones_mirror_x;
+    [NonSerialized] float[] bone_cache;
+
+    public bool has_bones {
+        get { return bone_frames > 0 && bone_names.Count > 0 && !string.IsNullOrEmpty(bone_data); }
+    }
+
+    public float[] bone_floats() {
+        if (bone_cache == null) {
+            byte[] bytes = Convert.FromBase64String(bone_data);
+            bone_cache = new float[bytes.Length / 4];
+            Buffer.BlockCopy(bytes, 0, bone_cache, 0, bone_cache.Length * 4);
+        }
+        return bone_cache;
+    }
     public List<MotionFrame> frames = new List<MotionFrame>();
     public List<MotionEvent> events = new List<MotionEvent>();
 
@@ -81,6 +113,15 @@ public class MotionClip {
         m.has_ball = has_ball;
         m.has_opponent = has_opponent;
         m.joint_names = joint_names;
+        m.body = body;
+        m.bone_names = bone_names;
+        m.bone_rate = bone_rate;
+        m.bone_t0 = bone_t0;
+        m.bone_frames = bone_frames;
+        m.bone_data = bone_data;
+        m.bone_cache = bone_cache;
+        m.bones_mirrored = !bones_mirrored;
+        m.bones_mirror_x = center_x;
         foreach (MotionFrame f in frames)
             m.frames.Add(f.mirrored(center_x));
         m.events.AddRange(events);
@@ -110,10 +151,11 @@ public class MotionClip {
     // Clips shipped with the app in Assets/Resources/GhostCoach/clips, e.g.
     // converted from Qualisys with Tools/blender/export_coach_clip.py.
     public static MotionClip load_bundled() {
-        TextAsset[] assets = Resources.LoadAll<TextAsset>("GhostCoach/clips");
-        if (assets.Length == 0)
-            return null;
-        return JsonUtility.FromJson<MotionClip>(assets[0].text);
+        // The folder also holds the .body.bytes character meshes.
+        foreach (TextAsset a in Resources.LoadAll<TextAsset>("GhostCoach/clips"))
+            if (!a.name.EndsWith(".body"))
+                return JsonUtility.FromJson<MotionClip>(a.text);
+        return null;
     }
 
     // Most recently written clip that is usable as a coach (see

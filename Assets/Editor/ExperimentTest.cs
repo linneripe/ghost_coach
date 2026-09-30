@@ -79,6 +79,8 @@ public static class ExperimentTest {
     // Accidental recordings must not become the coach.
     static void check_clips() {
         check(!ExperimentConfig.defaults().allow_recording, "recording a coach is off by default");
+        check(!ExperimentConfig.defaults().show_stand_marker && ExperimentConfig.defaults().round_racket,
+              "floor marker off and round racket on by default");
         string dir = MotionClip.clips_directory();
         Directory.CreateDirectory(dir);
         MotionClip good = clip(6f, true);
@@ -119,6 +121,10 @@ public static class ExperimentTest {
         s.next_participant = 7;
         s.save();
         check(ExperimentState.load().next_participant == 7, "participant counter is remembered");
+        s.hide_hand_visuals = true;
+        s.save();
+        ExperimentState again = ExperimentState.load();
+        check(again.hide_hand_visuals && again.next_participant == 7, "hide racket choice is remembered next to the counter");
     }
 
     static void check_csv() {
