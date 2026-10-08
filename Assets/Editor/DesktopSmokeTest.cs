@@ -20,6 +20,10 @@ public static class DesktopSmokeTest {
     static Vector3 ghost_paddle_start;
     static float ghost_time_start;
     static int free_haptic_before;
+    static ControllerMapperTest.Fake fake_controllers;
+    static GhostCoach.Phase phase_before_button;
+    static int participants_before_hold;
+    static bool hands_hidden_before_button;
     static List<bool> paddle_states = new List<bool>();
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
@@ -38,6 +42,7 @@ public static class DesktopSmokeTest {
         if (System.IO.Directory.Exists(root))
             System.IO.Directory.Delete(root, true);
         GhostCoachFiles.root_override = root;
+        ButtonDedup.window = 0f;        // The test presses the same button twice in a row.
         ExperimentConfig config = ExperimentConfig.defaults();
         config.strokes_per_block = 2;
         config.allow_recording = true;
@@ -375,6 +380,51 @@ public static class DesktopSmokeTest {
             check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing
                   && Mathf.Approximately(coach.coach_ghost.speed, 0.5f),
                   "reset goes back to phase 1 at half speed");
+
+            // Press buttons on a fake pair of controllers: the whole route from
+            // the controllers to the game, without the Input System.
+            ControllerInput controllers = coach.GetComponent<ControllerInput>();
+            check(controllers != null, "controller input is set up");
+            fake_controllers = new ControllerMapperTest.Fake();
+            controllers.source = fake_controllers;
+            ButtonDedup.log.Clear();
+            phase_before_button = coach.phase;
+            fake_controllers.set(false, Btn.Primary, true);          // Right A.
+            next_phase();
+        }
+        else if (phase == 13 && t > 0.3f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            fake_controllers.set(false, Btn.Primary, false);
+            check(ButtonDedup.log.Contains("GhostTogglePhase") && coach.phase != phase_before_button,
+                  "right A on the controller switches phase, now " + coach.phase);
+            check(ButtonDedup.log.FindAll(a => a == "GhostTogglePhase").Count == 1, "holding it for a while switches only once");
+            bool hidden_before = coach.hand_visuals.hidden;
+            fake_controllers.set(true, Btn.Primary, true);           // Left X.
+            hands_hidden_before_button = hidden_before;
+            next_phase();
+        }
+        else if (phase == 14 && t > 0.3f) {
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            fake_controllers.set(true, Btn.Primary, false);
+            check(coach.hand_visuals.hidden != hands_hidden_before_button, "left X on the controller hides or shows the racket and ball");
+            coach.hand_visuals.apply_hidden(false);                   // Leave it as it was.
+            fake_controllers.set(true, Btn.Trigger, true);           // Left trigger: robot serve.
+            next_phase();
+        }
+        else if (phase == 15 && t > 0.3f) {
+            fake_controllers.set(true, Btn.Trigger, false);
+            check(ButtonDedup.log.Contains("RobotServe"), "left trigger on the controller serves");
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            participants_before_hold = int.Parse(coach.experiment.participant.Substring(1));
+            fake_controllers.set(true, Btn.Thumbstick, true);        // Hold the left thumbstick.
+            next_phase();
+        }
+        else if (phase == 16 && t > 1.8f) {
+            fake_controllers.set(true, Btn.Thumbstick, false);
+            GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
+            int now = int.Parse(coach.experiment.participant.Substring(1));
+            check(ButtonDedup.log.Contains("GhostNewSession") && now == participants_before_hold + 1,
+                  "holding the left thumbstick starts the next participant, " + coach.experiment.participant);
             finish();
         }
     }
@@ -544,6 +594,7 @@ public static class DesktopSmokeTest {
 
     static void finish() {
         GhostCoachFiles.root_override = null;
+        ButtonDedup.window = 0.15f;
         EditorApplication.update -= step;
         Application.logMessageReceived -= record_error;
         EditorApplication.ExitPlaymode();
