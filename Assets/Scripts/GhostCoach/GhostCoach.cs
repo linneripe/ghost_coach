@@ -75,6 +75,11 @@ public class GhostCoach : MonoBehaviour {
         coach.path_guide = guide;
         coach.table = table;
         guide.stroke_scored += coach.stroke_scored;
+
+        ControllerInput controllers = g.AddComponent<ControllerInput>();
+        controllers.play = play;
+        controllers.buttons = buttons;
+        controllers.coach = coach;
     }
 
     void Start() {
@@ -313,18 +318,26 @@ public class GhostCoach : MonoBehaviour {
 
     // Input System messages (PlayControls.inputactions, PlayActions map).
     public void OnGhostTogglePhase() {
+        if (!ButtonDedup.accept("GhostTogglePhase"))
+            return;
         set_phase(phase == Phase.Coach ? Phase.Path : Phase.Coach);
     }
 
     public void OnGhostRecord() {
+        if (!ButtonDedup.accept("GhostRecord"))
+            return;
         toggle_recording();
     }
 
     public void OnGhostSpeed() {
+        if (!ButtonDedup.accept("GhostSpeed"))
+            return;
         change_speed();
     }
 
     public void OnGhostToggleHands() {
+        if (!ButtonDedup.accept("GhostToggleHands"))
+            return;
         toggle_hand_visuals();
     }
 
@@ -333,6 +346,8 @@ public class GhostCoach : MonoBehaviour {
     }
 
     public void OnGhostNewSession() {
+        if (!ButtonDedup.accept("GhostNewSession"))
+            return;
         new_session();
     }
 }
