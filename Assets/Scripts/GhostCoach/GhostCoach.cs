@@ -76,6 +76,9 @@ public class GhostCoach : MonoBehaviour {
         coach.table = table;
         guide.stroke_scored += coach.stroke_scored;
 
+        TableSpawn spawn = g.AddComponent<TableSpawn>();
+        spawn.play = play;
+
         ControllerInput controllers = g.AddComponent<ControllerInput>();
         controllers.play = play;
         controllers.buttons = buttons;

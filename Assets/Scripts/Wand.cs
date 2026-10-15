@@ -40,15 +40,29 @@ public class Wand : MonoBehaviour {
 	XRNode hand = (left? XRNode.LeftHand : XRNode.RightHand);
 	InputDevices.GetDevicesAtXRNode(hand, devices);
 
-	if(devices.Count == 1)
+	// Quest Link can list both a controller and a hand tracking device
+	// for the same hand: use the controller, else the first valid device.
+	InputDevice first = default(InputDevice);
+	bool have_first = false;
+	foreach (InputDevice d in devices)
 	{
-	    // Debug.Log(string.Format("Device name '{0}' with role '{1}'", device.name, device.role.ToString()));
-	    device = devices[0];
-	    return true;
+	    if (!d.isValid)
+		continue;
+	    if ((d.characteristics & InputDeviceCharacteristics.Controller) != 0)
+	    {
+		device = d;
+		return true;
+	    }
+	    if (!have_first)
+	    {
+		first = d;
+		have_first = true;
+	    }
 	}
-	else if (devices.Count > 1)
+	if (have_first)
 	{
-	    Debug.Log("Found more than one XR input device!");
+	    device = first;
+	    return true;
 	}
 	return false;
     }
@@ -93,12 +107,15 @@ public class Wand : MonoBehaviour {
 	    return;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceRotation, out r))
 	    return;
+	// Only the pose is needed.  Some runtimes (e.g. Quest Link) do not
+	// report velocity or acceleration; the velocity then comes from the
+	// motion since the last frame below.
 	if (!device.TryGetFeatureValue(CommonUsages.deviceVelocity, out v))
-	    return;
+	    v = (p - prev_pos) / Mathf.Max(Time.deltaTime, 0.001f);
 	if (!device.TryGetFeatureValue(CommonUsages.deviceAngularVelocity, out av))
-	    return;
+	    av = Vector3.zero;
 	if (!device.TryGetFeatureValue(CommonUsages.deviceAcceleration, out a))
-	    return;
+	    a = Vector3.zero;
 	}
 
 #if old_steamvr
