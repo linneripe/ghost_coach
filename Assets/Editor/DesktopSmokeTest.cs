@@ -265,6 +265,14 @@ public static class DesktopSmokeTest {
             coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing,
                   "coach ghost shown in coach phase");
+            int stroke_count = coach.coach_clip.strokes().Count;
+            if (stroke_count >= 2) {
+                int stroke_before = coach.stroke;
+                coach.next_stroke();
+                check(coach.stroke == (stroke_before + 1) % stroke_count && coach.coach_ghost.stroke == coach.stroke
+                      && coach.path_guide.stroke == coach.stroke, "next stroke changes the repeated stroke to " + coach.stroke);
+                check(coach.coach_ghost.time >= 0f && coach.coach_ghost.showing, "coach still shown after changing stroke");
+            }
             coach.coach_ghost.speed = 1f;
             GameObject gp = GameObject.Find("ghost paddle");
             check(gp != null, "ghost paddle created");

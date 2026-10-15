@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -33,6 +34,7 @@ public class GhostCoach : MonoBehaviour {
     public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
     public Experiment experiment;
     public bool allow_recording = false;
+    public int stroke = 0;               // The stroke of the clip repeated and followed.
     bool player_left_handed;
     bool bindings_set = false;
     bool variant_applied = false;
@@ -96,7 +98,7 @@ public class GhostCoach : MonoBehaviour {
         GhostVisuals.make_racket_round(play.paddle_hand.held_paddle.transform);
         GhostVisuals.make_racket_round(play.robot.paddle.transform);
         hand_visuals.apply_hidden(ExperimentState.load().hide_hand_visuals);
-        string record_hint = (allow_recording ? "   B: spela in egen coach" : "");
+        string record_hint = (allow_recording ? "   B: spela in egen coach" : "   B: byta slag");
         MotionClip c = (allow_recording ? MotionClip.load_latest() : null);
         if (c == null) {
             c = MotionClip.load_bundled();
@@ -205,11 +207,31 @@ public class GhostCoach : MonoBehaviour {
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
         else
             show_message(phase == Phase.Coach
-                         ? "Fas 1: Titta på coachen" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : "")
+                         ? "Fas 1: Titta på coachen\nB: byta slag" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : "")
                          : "Fas 2: Din tur\n" + (GhostVisuals.show_stand_marker ? "Stå på markeringen, följ banan" : "Följ banan"));
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
         experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
+    }
+
+    // Repeat the next stroke of the clip: the coach shows it in phase 1 and
+    // its paddle path is the reference in phase 2.
+    public void next_stroke() {
+        if (coach_clip == null)
+            return;
+        List<MotionEvent> strokes = coach_clip.strokes();
+        if (strokes.Count < 2) {
+            show_message("Bara ett slag finns");
+            return;
+        }
+        stroke = (stroke + 1) % strokes.Count;
+        coach_ghost.stroke = stroke;
+        path_guide.stroke = stroke;
+        update_ghost();
+        string kind = (strokes[stroke].type == "backhand" ? "backhand" : "forehand");
+        show_message("Slag " + (stroke + 1) + " av " + strokes.Count + ": " + kind);
+        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
+        experiment.log_event("stroke", (stroke + 1) + " " + kind);
     }
 
     public void toggle_recording() {
@@ -290,6 +312,7 @@ public class GhostCoach : MonoBehaviour {
     public void reset() {
         recorder.cancel_recording();
         coach_ghost.speed = 0.5f;
+        stroke = coach_ghost.stroke = path_guide.stroke = 0;
         phase = Phase.Coach;
         update_ghost();
         show_message("Återställd\nFas 1: Titta på coachen");
@@ -326,10 +349,14 @@ public class GhostCoach : MonoBehaviour {
         set_phase(phase == Phase.Coach ? Phase.Path : Phase.Coach);
     }
 
+    // Right B: change the stroke, or record a coach if that is turned on.
     public void OnGhostRecord() {
         if (!ButtonDedup.accept("GhostRecord"))
             return;
-        toggle_recording();
+        if (allow_recording)
+            toggle_recording();
+        else
+            next_stroke();
     }
 
     public void OnGhostSpeed() {

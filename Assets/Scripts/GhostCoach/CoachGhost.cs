@@ -23,6 +23,7 @@ public class CoachGhost : MonoBehaviour {
     // the arm is in view.  Standing a little behind helps see both.
     public bool stand_on_paddle_side = false;
     public float stand_behind = 0f;         // Meters behind the coach.
+    public int stroke = 0;                  // Which stroke of the clip is repeated.
 
     MotionClip clip;
     float playback_time, loop_start, loop_end;
@@ -99,15 +100,16 @@ public class CoachGhost : MonoBehaviour {
         return speed;
     }
 
-    // Loop over the strokes, from a little before the first ball contact to
-    // a little after the last one, or the whole clip if it has no contacts.
+    // Repeat the chosen stroke, from a little before its ball contact to a
+    // little after, or the whole clip if it has no strokes.
     void set_loop() {
-        List<float> contacts = clip.contact_times();
+        List<MotionEvent> strokes = clip.strokes();
         loop_start = 0f;
         loop_end = clip.duration;
-        if (contacts.Count > 0) {
-            loop_start = Mathf.Max(0f, contacts[0] - lead_time);
-            loop_end = Mathf.Min(clip.duration, contacts[contacts.Count-1] + follow_time);
+        if (strokes.Count > 0) {
+            float contact = strokes[stroke % strokes.Count].t;
+            loop_start = Mathf.Max(0f, contact - lead_time);
+            loop_end = Mathf.Min(clip.duration, contact + follow_time);
         }
     }
 

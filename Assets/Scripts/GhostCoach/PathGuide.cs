@@ -14,6 +14,7 @@ public class PathGuide : MonoBehaviour {
     public float path_lead = 0.6f;          // Seconds of backswing drawn before contact.
     public float path_follow = 0.35f;       // Seconds of follow-through drawn after contact.
     public float history_seconds = 2f;      // Player motion kept for scoring.
+    public int stroke = 0;                  // Which stroke of the clip is the reference.
 
     public System.Action<StrokeScore> stroke_scored;
     public StrokeScore last_score;
@@ -69,12 +70,20 @@ public class PathGuide : MonoBehaviour {
         pending_contacts.Clear();
     }
 
-    // Use the first ball contact with a full swing around it, or the middle
-    // of the clip if it has no contacts.
+    // Use the chosen stroke if it has a full swing around it, else the first
+    // ball contact that has, or the middle of the clip if it has no contacts.
     bool choose_reference_stroke(MotionClip c) {
         float lo = StrokeCompare.before_contact, hi = c.duration - StrokeCompare.after_contact;
         if (hi <= lo)
             return false;
+        List<MotionEvent> strokes = c.strokes();
+        if (strokes.Count > 0) {
+            float t = strokes[stroke % strokes.Count].t;
+            if (t >= lo && t <= hi) {
+                coach_contact = t;
+                return true;
+            }
+        }
         foreach (float t in c.contact_times())
             if (t >= lo && t <= hi) {
                 coach_contact = t;
