@@ -20,7 +20,7 @@ using UnityEngine.InputSystem;
 // the On<Action> messages from PlayControls.inputactions.
 public class GhostCoach : MonoBehaviour {
 
-    public enum Phase { Coach, Path }
+    public enum Phase { Coach, Path, Match }
 
     public Play play;
     public MotionRecorder recorder;
@@ -118,9 +118,18 @@ public class GhostCoach : MonoBehaviour {
         set_coach(c);
         experiment = new Experiment(this);
         experiment.start_session();
+        play.robot_returns += robot_returns;
+    }
+
+    // Match phase: the coach swings when the robot returns the ball.
+    void robot_returns(float seconds) {
+        if (phase == Phase.Match)
+            coach_ghost.match_stroke(seconds);
     }
 
     void OnDestroy() {
+        if (play != null)
+            play.robot_returns -= robot_returns;
         if (experiment != null)
             experiment.end_session();
     }
@@ -203,13 +212,15 @@ public class GhostCoach : MonoBehaviour {
         update_ghost();
         if (coach_clip == null)
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
+        else if (phase == Phase.Coach)
+            show_message("Fas 1: Titta på coachen" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : ""));
+        else if (phase == Phase.Path)
+            show_message("Fas 2: Din tur\n" + (GhostVisuals.show_stand_marker ? "Stå på markeringen, följ banan" : "Följ banan"));
         else
-            show_message(phase == Phase.Coach
-                         ? "Fas 1: Titta på coachen" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : "")
-                         : "Fas 2: Din tur\n" + (GhostVisuals.show_stand_marker ? "Stå på markeringen, följ banan" : "Följ banan"));
+            show_message("Fas 3: Spela mot coachen\nCoachen slår tillbaka bollen");
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
-        experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
+        experiment.log_event("phase", phase.ToString().ToLower());
     }
 
     public void toggle_recording() {
@@ -242,7 +253,8 @@ public class GhostCoach : MonoBehaviour {
     // neither while recording.
     void update_ghost() {
         bool live = (coach_clip != null && !recorder.recording);
-        if (live && phase == Phase.Coach)
+        coach_ghost.match_mode = (phase == Phase.Match);
+        if (live && (phase == Phase.Coach || phase == Phase.Match))
             coach_ghost.show(coach_clip);
         else
             coach_ghost.hide();
@@ -260,7 +272,7 @@ public class GhostCoach : MonoBehaviour {
                 Vector3 to_coach = Vector3.ProjectOnPlane(coach_ghost.coach_position - coach_ghost.player_spot, Vector3.up);
                 forward = (forward + to_coach.normalized).normalized;
                 DesktopRig.active.stand_at(coach_ghost.player_spot, forward);
-            } else
+            } else if (phase == Phase.Path)
                 DesktopRig.active.stand_at(path_guide.player_spot, forward);
         }
     }
@@ -323,7 +335,7 @@ public class GhostCoach : MonoBehaviour {
     public void OnGhostTogglePhase() {
         if (!ButtonDedup.accept("GhostTogglePhase"))
             return;
-        set_phase(phase == Phase.Coach ? Phase.Path : Phase.Coach);
+        set_phase(phase == Phase.Coach ? Phase.Path : (phase == Phase.Path ? Phase.Match : Phase.Coach));
     }
 
     public void OnGhostRecord() {

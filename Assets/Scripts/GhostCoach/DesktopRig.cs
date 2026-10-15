@@ -313,7 +313,7 @@ public class DesktopRig : MonoBehaviour {
             "Z/X: open/close face   C: forehand/backhand (" + (backhand ? "backhand" : "forehand") + ")\n" +
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
             "Tab: settings menu     Left click: press menu buttons\n" +
-            "P: coach/path phase\n" +
+            "P: coach/path/match phase\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
             "N: next test participant   Backspace: reset\n" +
             "G: hide/show racket and ball in hand\n" +
