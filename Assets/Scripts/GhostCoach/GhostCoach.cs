@@ -38,6 +38,7 @@ public class GhostCoach : MonoBehaviour {
     bool player_left_handed;
     bool bindings_set = false;
     bool variant_applied = false;
+    Dictionary<MeshRenderer, bool> robot_visible = new Dictionary<MeshRenderer, bool>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create() {
@@ -207,8 +208,8 @@ public class GhostCoach : MonoBehaviour {
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
         else
             show_message(phase == Phase.Coach
-                         ? "Fas 1: Titta på coachen\nB: byta slag" + (GhostVisuals.show_stand_marker ? "\nStå på den gröna markeringen" : "")
-                         : "Fas 2: Din tur\n" + (GhostVisuals.show_stand_marker ? "Stå på markeringen, följ banan" : "Följ banan"));
+                         ? "Titta på coachen\nA: spela mot roboten   B: byta slag"
+                         : "Spela mot roboten\nA: titta på coachen   B: byta slag");
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
         experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
@@ -231,7 +232,7 @@ public class GhostCoach : MonoBehaviour {
         string kind = (strokes[stroke].type == "backhand" ? "backhand" : "forehand");
         show_message("Slag " + (stroke + 1) + " av " + strokes.Count + ": " + kind);
         play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
-        experiment.log_event("stroke", (stroke + 1) + " " + kind);
+        experiment.log_event("stroke_select", (stroke + 1) + " " + kind);
     }
 
     public void toggle_recording() {
@@ -260,14 +261,18 @@ public class GhostCoach : MonoBehaviour {
         }
     }
 
-    // The coach ghost shows only in phase 1 and the path only in phase 2,
-    // neither while recording.
+    // The coach stands beside the player in both phases and repeats the
+    // chosen stroke.  In phase 1 (watch) the coach hits its own ball and
+    // the robot rests; in phase 2 (play) the robot plays, the coach's ball
+    // is gone and the path is shown.  Nothing shows while recording.
     void update_ghost() {
         bool live = (coach_clip != null && !recorder.recording);
-        if (live && phase == Phase.Coach)
+        coach_ghost.show_ball = (phase == Phase.Coach);
+        if (live)
             coach_ghost.show(coach_clip);
         else
             coach_ghost.hide();
+        set_robot(phase == Phase.Path);
         if (live && phase == Phase.Path)
             path_guide.show(coach_clip);
         else
@@ -278,12 +283,29 @@ public class GhostCoach : MonoBehaviour {
         // and would be outside a flat screen's field of view.
         if (DesktopRig.active != null && live) {
             Vector3 forward = table.transform.forward;
-            if (phase == Phase.Coach) {
-                Vector3 to_coach = Vector3.ProjectOnPlane(coach_ghost.coach_position - coach_ghost.player_spot, Vector3.up);
-                forward = (forward + to_coach.normalized).normalized;
-                DesktopRig.active.stand_at(coach_ghost.player_spot, forward);
-            } else
-                DesktopRig.active.stand_at(path_guide.player_spot, forward);
+            // The coach is beside the player and would be outside a flat
+            // screen's field of view: turn halfway toward the coach.
+            Vector3 to_coach = Vector3.ProjectOnPlane(coach_ghost.coach_position - coach_ghost.player_spot, Vector3.up);
+            forward = (forward + to_coach.normalized).normalized;
+            DesktopRig.active.stand_at(coach_ghost.player_spot, forward);
+        }
+    }
+
+    // The robot only plays in phase 2: no serve or return, and its paddle
+    // is hidden, in phase 1.
+    void set_robot(bool active) {
+        play.robot_active = active;
+        foreach (MeshRenderer r in play.robot.paddle.GetComponentsInChildren<MeshRenderer>(true)) {
+            if (active) {
+                bool was;
+                if (robot_visible.TryGetValue(r, out was)) {
+                    r.enabled = was;
+                    robot_visible.Remove(r);
+                }
+            } else if (!robot_visible.ContainsKey(r)) {
+                robot_visible[r] = r.enabled;
+                r.enabled = false;
+            }
         }
     }
 
@@ -315,7 +337,7 @@ public class GhostCoach : MonoBehaviour {
         stroke = coach_ghost.stroke = path_guide.stroke = 0;
         phase = Phase.Coach;
         update_ghost();
-        show_message("Återställd\nFas 1: Titta på coachen");
+        show_message("Återställd\nTitta på coachen");
         experiment.log_event("reset", "");
     }
 

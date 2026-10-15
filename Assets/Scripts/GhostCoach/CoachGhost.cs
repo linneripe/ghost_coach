@@ -24,6 +24,14 @@ public class CoachGhost : MonoBehaviour {
     public bool stand_on_paddle_side = false;
     public float stand_behind = 0f;         // Meters behind the coach.
     public int stroke = 0;                  // Which stroke of the clip is repeated.
+    // The coach always stands beside the player, who takes the place where the
+    // coach stood when recording, so the paddle path in phase 2 is right.  The
+    // coach is drawn a little larger than life, scaled around its own feet.
+    public float coach_scale = 1.1f;
+    public bool show_ball = true;           // The coach's ball, off while the player plays.
+    Vector3 shift = Vector3.zero;           // Table coordinates: from recorded place to beside the player.
+    Vector3 scale_origin = Vector3.zero;    // Table coordinates, on the floor at the coach's feet.
+    Transform frame_transform;
 
     MotionClip clip;
     float playback_time, loop_start, loop_end;
@@ -122,16 +130,32 @@ public class CoachGhost : MonoBehaviour {
         pose_ghost(clip.sample(playback_time), playback_time);
     }
 
+    // Table frame moved to where the coach stands beside the player.
+    Transform frame {
+        get {
+            if (frame_transform == null)
+                frame_transform = new GameObject("coach frame").transform;
+            frame_transform.SetPositionAndRotation(table.position + table.rotation * shift, table.rotation);
+            return frame_transform;
+        }
+    }
+
+    // A recorded table coordinates position as drawn: scaled around the
+    // coach's feet and moved beside the player.
+    public Vector3 drawn(Vector3 p) {
+        return TableSpace.to_world(frame, scale_origin + coach_scale * (p - scale_origin));
+    }
+
     void pose_ghost(MotionFrame f, float t) {
-        Vector3 paddle_position = TableSpace.to_world(table, f.paddle_position);
-        Quaternion paddle_rotation = TableSpace.to_world(table, f.paddle_rotation);
+        Vector3 paddle_position = drawn(f.paddle_position);
+        Quaternion paddle_rotation = TableSpace.to_world(frame, f.paddle_rotation);
         ghost_paddle.SetPositionAndRotation(paddle_position, paddle_rotation);
-        ghost_robot_paddle.SetPositionAndRotation(TableSpace.to_world(table, f.robot_paddle_position),
-                                                  TableSpace.to_world(table, f.robot_paddle_rotation));
+        ghost_robot_paddle.SetPositionAndRotation(drawn(f.robot_paddle_position),
+                                                  TableSpace.to_world(frame, f.robot_paddle_rotation));
 
         // Stick figure body facing where the head faces, kept upright.
-        Vector3 head_position = TableSpace.to_world(table, f.head_position);
-        Quaternion head_rotation = TableSpace.to_world(table, f.head_rotation);
+        Vector3 head_position = drawn(f.head_position);
+        Quaternion head_rotation = TableSpace.to_world(frame, f.head_rotation);
         Vector3 forward = Vector3.ProjectOnPlane(head_rotation * Vector3.forward, Vector3.up).normalized;
         if (forward == Vector3.zero)
             forward = table.forward;
@@ -139,12 +163,12 @@ public class CoachGhost : MonoBehaviour {
         head.SetPositionAndRotation(head_position, head_rotation);
 
         if (body != null && clip.has_bones) {
-            body.pose(clip, t, table);
+            body.pose(clip, t, frame, scale_origin, coach_scale);
         } else if (limb_from != null && f.joints != null) {
             // Real joints from mocap.
             for (int i = 0 ; i < limbs.Length ; ++i)
-                place_limb(limbs[i], TableSpace.to_world(table, f.joints[limb_from[i]]),
-                           TableSpace.to_world(table, f.joints[limb_to[i]]), bone_widths[i]);
+                place_limb(limbs[i], drawn(f.joints[limb_from[i]]),
+                           drawn(f.joints[limb_to[i]]), bone_widths[i]);
         } else {
             Vector3 neck = head_position - 0.15f * Vector3.up;
             Vector3 hips = head_position - 0.75f * Vector3.up;
@@ -157,8 +181,8 @@ public class CoachGhost : MonoBehaviour {
             place_limb(arm, shoulder, hand, 0.08f);
         }
 
-        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play);
-        ball.position = TableSpace.to_world(table, f.ball_position);
+        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play && show_ball);
+        ball.position = drawn(f.ball_position);
     }
 
     // Stretch a unit-height primitive between two points.
@@ -224,8 +248,12 @@ public class CoachGhost : MonoBehaviour {
         Vector3 coach = GhostVisuals.coach_stance(clip, loop_start, loop_end, out forward, out right);
         float paddle_side = (clip.left_handed ? -1f : 1f);
         float side = (stand_on_paddle_side ? paddle_side : -paddle_side);
-        GhostVisuals.place_on_floor(stand_marker, table,
-                                    coach + stand_offset * side * right - stand_behind * forward);
+        // Where the player used to watch from; the coach now stands there
+        // and the player stands at the recorded place.
+        Vector3 beside = stand_offset * side * right - stand_behind * forward;
+        shift = new Vector3(-beside.x, 0f, -beside.z);
+        scale_origin = new Vector3(coach.x, 0f, coach.z);
+        GhostVisuals.place_on_floor(stand_marker, table, coach);
     }
 
     void build_ghost() {

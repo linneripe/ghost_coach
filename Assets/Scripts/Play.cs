@@ -27,6 +27,7 @@ public class Play : MonoBehaviour {
     public Camera passthrough_camera;   // Used to hide skybox with pass-through video
     public PathTracer path_tracer;
     int track_countdown;
+    public bool robot_active = true;                 // Off while the player only watches the coach (GhostCoach).
     public System.Action<Ball> player_paddle_hit;  // GhostCoach recording and scoring.
     
     Play() {
@@ -154,6 +155,8 @@ public class Play : MonoBehaviour {
     }
 
     Stroke return_ball(Ball b) {
+        if (!robot_active)
+            return null;
 
         bool player_serve = (play_state != null &&
                           play_state.name == "player serve paddle");
