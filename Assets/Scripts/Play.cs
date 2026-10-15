@@ -27,7 +27,6 @@ public class Play : MonoBehaviour {
     public Camera passthrough_camera;   // Used to hide skybox with pass-through video
     public PathTracer path_tracer;
     int track_countdown;
-    public System.Action<float> robot_returns;       // Seconds until the robot's return meets the ball (GhostCoach match phase).
     public System.Action<Ball> player_paddle_hit;  // GhostCoach recording and scoring.
     
     Play() {
@@ -137,8 +136,6 @@ public class Play : MonoBehaviour {
             Stroke s = return_ball (b);
             float return_time = (s == null ? 0f : s.contact_time - b.motion.time);
             report_speeds (b, bn, return_time);
-            if (s != null && robot_returns != null)
-                robot_returns(return_time);
             enable_markers();
             if (player_paddle_hit != null)
                 player_paddle_hit(b);

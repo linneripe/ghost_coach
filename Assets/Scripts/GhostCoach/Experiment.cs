@@ -104,7 +104,7 @@ public class Experiment {
         log.write(DateTime.Now, Time.time - start_time, participant, session, name, detail,
                   finished ? "" : (object)(block + 1), variant != null ? variant.name : "",
                   s != null ? (object)stroke_in_block : null, s != null ? (object)stroke_total : null,
-                  coach.phase.ToString().ToLower(),
+                  coach.phase == GhostCoach.Phase.Coach ? "coach" : "path",
                   coach.play.paddle_hand.wand.left,
                   clip != null ? clip.name : "", clip != null ? clip.source : "",
                   s != null ? (object)s.score : null,

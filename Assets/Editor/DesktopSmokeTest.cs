@@ -263,15 +263,6 @@ public static class DesktopSmokeTest {
 
             check(!coach.coach_ghost.showing, "coach ghost hidden in path phase");
             coach.OnGhostTogglePhase();
-            check(coach.phase == GhostCoach.Phase.Match && coach.coach_ghost.showing
-                  && coach.coach_ghost.match_mode && !coach.path_guide.showing,
-                  "match phase shows the coach at the far end and hides the path");
-            // The coach is at the far end of the table, facing the player.
-            check(Vector3.Dot(coach.coach_ghost.coach_position - coach.table.transform.position,
-                              coach.table.transform.forward) > 0.5f,
-                  "match coach stands on the robot's side");
-            coach.coach_ghost.match_stroke(0.5f);
-            coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing,
                   "coach ghost shown in coach phase");
             coach.coach_ghost.speed = 1f;

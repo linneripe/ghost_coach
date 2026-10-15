@@ -23,13 +23,6 @@ public class CoachGhost : MonoBehaviour {
     // the arm is in view.  Standing a little behind helps see both.
     public bool stand_on_paddle_side = false;
     public float stand_behind = 0f;         // Meters behind the coach.
-    // Match phase: the coach stands at the far end of the table, facing the
-    // player, and swings the clip's stroke each time the robot returns the
-    // ball.  The robot's own paddle stays the real racket.
-    public bool match_mode = false;
-    Transform far_table;
-    float match_ready, match_end;
-    bool match_swinging = false;
 
     MotionClip clip;
     float playback_time, loop_start, loop_end;
@@ -72,33 +65,6 @@ public class CoachGhost : MonoBehaviour {
         get { return stand_marker.position; }
     }
 
-    // The table frame the clip is drawn in: the table itself, or in the
-    // match phase the table turned half a turn so the coach is at the far end.
-    Transform frame {
-        get {
-            if (!match_mode)
-                return table;
-            if (far_table == null)
-                far_table = new GameObject("far table frame").transform;
-            far_table.SetPositionAndRotation(table.position, table.rotation * Quaternion.Euler(0f, 180f, 0f));
-            return far_table;
-        }
-    }
-
-    // The robot returns the ball and meets it in this many seconds: time the
-    // coach's swing so its ball contact comes then.
-    public void match_stroke(float seconds_until_contact) {
-        if (clip == null || !match_mode)
-            return;
-        playback_time = match_contact() - seconds_until_contact;
-        match_swinging = true;
-    }
-
-    float match_contact() {
-        List<float> contacts = clip.contact_times();
-        return (contacts.Count > 0 ? contacts[0] : 0.5f * clip.duration);
-    }
-
     public void show(MotionClip c) {
         if (c == null || c.frames.Count == 0) {
             hide();
@@ -109,14 +75,10 @@ public class CoachGhost : MonoBehaviour {
         clip = c;
         set_loop();
         playback_time = loop_start;
-        match_swinging = false;
-        match_ready = Mathf.Max(0f, match_contact() - lead_time);
-        match_end = Mathf.Min(clip.duration, match_contact() + follow_time);
         place_stand_marker();
         map_joints();
         ghost_root.gameObject.SetActive(true);
-        ghost_robot_paddle.gameObject.SetActive(clip.has_opponent && !match_mode);
-        ghost_paddle.gameObject.SetActive(!match_mode);
+        ghost_robot_paddle.gameObject.SetActive(clip.has_opponent);
         Update();
     }
 
@@ -152,17 +114,6 @@ public class CoachGhost : MonoBehaviour {
     void Update() {
         if (clip == null || !showing)
             return;
-        if (match_mode) {
-            // Stand ready until the robot returns a ball, then swing once.
-            if (match_swinging) {
-                playback_time += Time.deltaTime;
-                if (playback_time > match_end)
-                    match_swinging = false;
-            }
-            float t = (match_swinging ? Mathf.Max(playback_time, match_ready) : match_ready);
-            pose_ghost(clip.sample(t), t);
-            return;
-        }
         playback_time += speed * Time.deltaTime;
         if (playback_time > loop_end || playback_time < loop_start)
             playback_time = loop_start;
@@ -170,7 +121,6 @@ public class CoachGhost : MonoBehaviour {
     }
 
     void pose_ghost(MotionFrame f, float t) {
-        Transform table = frame;     // Shadows the field: the drawing frame.
         Vector3 paddle_position = TableSpace.to_world(table, f.paddle_position);
         Quaternion paddle_rotation = TableSpace.to_world(table, f.paddle_rotation);
         ghost_paddle.SetPositionAndRotation(paddle_position, paddle_rotation);
@@ -205,7 +155,7 @@ public class CoachGhost : MonoBehaviour {
             place_limb(arm, shoulder, hand, 0.08f);
         }
 
-        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play && !match_mode);
+        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play);
         ball.position = TableSpace.to_world(table, f.ball_position);
     }
 
