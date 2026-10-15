@@ -148,7 +148,7 @@ public class CoachBody {
     }
 
     // Pose the bones at a clip time.
-    public void pose(MotionClip clip, float t, Transform table) {
+    public void pose(MotionClip clip, float t, Transform table, Vector3 origin = default(Vector3), float scale = 1f) {
         if (clip != mapped_clip)
             map_bones(clip);
         float[] d = clip.bone_floats();
@@ -169,7 +169,9 @@ public class CoachBody {
                 p.x = 2f * clip.bones_mirror_x - p.x;
                 q = new Quaternion(q.x, -q.y, -q.z, q.w);   // Rotation seen in a mirror across x.
             }
+            p = origin + scale * (p - origin);       // Larger around the feet, with the bones.
             bones[i].SetPositionAndRotation(TableSpace.to_world(table, p), table.rotation * q);
+            bones[i].localScale = scale * Vector3.one;
         }
     }
 

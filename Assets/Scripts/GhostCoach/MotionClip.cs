@@ -78,6 +78,17 @@ public class MotionClip {
         return times;
     }
 
+    // All strokes in time order: forehand contacts and the strokes marked
+    // "backhand" (ambiguous or backhand).  The player picks one to repeat.
+    public List<MotionEvent> strokes() {
+        List<MotionEvent> list = new List<MotionEvent>();
+        foreach (MotionEvent e in events)
+            if (e.type == "contact" || e.type == "backhand")
+                list.Add(e);
+        list.Sort((a, b) => a.t.CompareTo(b.t));
+        return list;
+    }
+
     // Interpolated frame at time t, clamped to the clip.
     public MotionFrame sample(float t) {
         int n = frames.Count;

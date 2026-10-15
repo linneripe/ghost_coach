@@ -206,6 +206,7 @@ public static class DesktopSmokeTest {
             if (tossed_ball != null)
                 check(toss_max_height > 0.15f,
                       "tossed ball rose " + toss_max_height.ToString("F2") + " m");
+            play.robot_active = true;      // The robot rests in the watch phase.
             rig.robot_serve();
             next_phase();
         }
@@ -261,19 +262,21 @@ public static class DesktopSmokeTest {
             // Remove the test clip so it is not loaded as the coach later.
             System.IO.File.Delete(System.IO.Path.Combine(MotionClip.clips_directory(), c.name + ".json"));
 
-            check(!coach.coach_ghost.showing, "coach ghost hidden in path phase");
-            coach.OnGhostTogglePhase();
-            check(coach.phase == GhostCoach.Phase.Match && coach.coach_ghost.showing
-                  && coach.coach_ghost.match_mode && !coach.path_guide.showing,
-                  "match phase shows the coach at the far end and hides the path");
-            // The coach is at the far end of the table, facing the player.
-            check(Vector3.Dot(coach.coach_ghost.coach_position - coach.table.transform.position,
-                              coach.table.transform.forward) > 0.5f,
-                  "match coach stands on the robot's side");
-            coach.coach_ghost.match_stroke(0.5f);
+            check(coach.coach_ghost.showing && !coach.coach_ghost.show_ball && play.robot_active && coach.path_guide.showing,
+                  "play phase: coach stays beside, no coach ball, robot plays, path shown");
             coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing,
                   "coach ghost shown in coach phase");
+            check(!play.robot_active && coach.coach_ghost.show_ball && !coach.path_guide.showing,
+                  "watch phase: robot rests, coach hits its ball, no path");
+            int stroke_count = coach.coach_clip.strokes().Count;
+            if (stroke_count >= 2) {
+                int stroke_before = coach.stroke;
+                coach.next_stroke();
+                check(coach.stroke == (stroke_before + 1) % stroke_count && coach.coach_ghost.stroke == coach.stroke
+                      && coach.path_guide.stroke == coach.stroke, "next stroke changes the repeated stroke to " + coach.stroke);
+                check(coach.coach_ghost.time >= 0f && coach.coach_ghost.showing, "coach still shown after changing stroke");
+            }
             coach.coach_ghost.speed = 1f;
             GameObject gp = GameObject.Find("ghost paddle");
             check(gp != null, "ghost paddle created");
@@ -311,8 +314,8 @@ public static class DesktopSmokeTest {
             foreach (Ball b in Object.FindObjectsByType<Ball>(FindObjectsSortMode.None))
                 b.freeze = true;
             coach.OnGhostTogglePhase();
-            check(coach.phase == GhostCoach.Phase.Path && !coach.coach_ghost.showing
-                  && coach.path_guide.showing, "path phase hides coach and shows path");
+            check(coach.phase == GhostCoach.Phase.Path && coach.coach_ghost.showing
+                  && coach.path_guide.showing, "play phase keeps the coach and shows the path");
             check(coach.path_guide.coach_path_points > 10,
                   "coach paddle path drawn with " + coach.path_guide.coach_path_points + " points");
             free_haptic_before = rig.free_haptic_count;
@@ -509,7 +512,7 @@ public static class DesktopSmokeTest {
         float worst = 0f;
         foreach (string j in new string[] { "Hips", "Head", "RightHand", "RightForeArm", "LeftHand", "RightFoot", "LeftFoot" }) {
             Transform bone = body.bone("mixamorig:" + j);
-            Vector3 expected = TableSpace.to_world(table, f.joints[names.IndexOf(j)]);
+            Vector3 expected = gc.coach_ghost.drawn(f.joints[names.IndexOf(j)]);
             worst = Mathf.Max(worst, bone == null ? 99f : (bone.position - expected).magnitude);
         }
         check(worst < 0.03f, "the bones are where the clip's joints are, worst error " + worst.ToString("F3") + " m");
@@ -527,15 +530,15 @@ public static class DesktopSmokeTest {
             sum += w;
         }
         Vector3 centroid = sum / vertices.Length;
-        float top = TableSpace.to_world(table, f.joints[names.IndexOf("HeadTop_End")]).y;
-        float foot = Mathf.Min(TableSpace.to_world(table, f.joints[names.IndexOf("LeftFoot")]).y,
-                               TableSpace.to_world(table, f.joints[names.IndexOf("RightFoot")]).y);
+        float top = gc.coach_ghost.drawn(f.joints[names.IndexOf("HeadTop_End")]).y;
+        float foot = Mathf.Min(gc.coach_ghost.drawn(f.joints[names.IndexOf("LeftFoot")]).y,
+                               gc.coach_ghost.drawn(f.joints[names.IndexOf("RightFoot")]).y);
         check(max_y > top - 0.05f && max_y < top + 0.2f,
               "mesh top " + max_y.ToString("F2") + " m matches the head top joint " + top.ToString("F2") + " m");
         check(min_y < foot + 0.02f && min_y > foot - 0.2f,
               "mesh bottom " + min_y.ToString("F2") + " m matches the feet " + foot.ToString("F2") + " m");
-        Vector3 hips = TableSpace.to_world(table, f.joints[names.IndexOf("Hips")]);
-        check(new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude < 0.4f,
+        Vector3 hips = gc.coach_ghost.drawn(f.joints[names.IndexOf("Hips")]);
+        check(new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude < 0.45f,   // The coach is drawn 10 % larger.
               "mesh is around the hips joint, " + new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude.ToString("F2") + " m off");
         Object.Destroy(baked);
 
