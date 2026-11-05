@@ -129,18 +129,23 @@ public static class DesktopSmokeTest {
                 if (cp != null)
                     save_view(gc.coach_ghost.player_spot + 1.6f * Vector3.up, cp.transform.position, 60f,
                               "Logs/smoke_coach_contact.png");
-                // The character mesh is not in git (see Tools/blender/README.md), so
-                // these checks only run where the file has been copied in.
-                bool has_mesh = gc.coach_clip.has_bones
-                                && Resources.Load<TextAsset>("GhostCoach/clips/" + gc.coach_clip.body) != null;
-                if (has_mesh)
-                    check_body(gc, contacts.Count > 0 ? contacts[0] : 1f);
-                else if (gc.coach_clip.has_bones)
-                    check(gc.coach_ghost.body == null && GameObject.Find("ghost body mesh") == null,
-                          "without the character mesh file the simple figure is drawn");
-                // The whole figure from the front-left, further away.
-                if (gc.coach_ghost.body != null && gc.coach_ghost.body.bone("mixamorig:Hips") != null) {
-                    Vector3 hips = gc.coach_ghost.body.bone("mixamorig:Hips").position;
+                // A mocap coach is capsules between the recorded joints, drawn
+                // beside the player and a little larger than life.
+                float t_contact = (contacts.Count > 0 ? contacts[0] : 1f);
+                List<string> names = gc.coach_clip.joint_names;
+                if (names.Count > 0) {
+                    MotionFrame mf = gc.coach_clip.sample(t_contact);
+                    GameObject torso = GameObject.Find("ghost Hips Neck");
+                    Vector3 hips = gc.coach_ghost.drawn(mf.joints[names.IndexOf("Hips")]);
+                    Vector3 neck = gc.coach_ghost.drawn(mf.joints[names.IndexOf("Neck")]);
+                    check(torso != null && (torso.transform.position - 0.5f * (hips + neck)).magnitude < 0.03f,
+                          "the torso is between the hips and neck joints");
+                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf("HeadTop_End")]).y;
+                    float real_top = mf.joints[names.IndexOf("HeadTop_End")].y;
+                    check(head_top > real_top * 1.05f && head_top < real_top * 1.15f,
+                          "the coach is about 10 % larger than the recorded person (" + real_top.ToString("F2")
+                          + " m becomes " + head_top.ToString("F2") + " m)");
+                    // The whole figure from the front-left, further away.
                     Vector3 side = gc.coach_ghost.player_spot - hips;
                     side.y = 0f;
                     save_view(hips + 2.6f * side.normalized + 0.5f * Vector3.up, hips + 0.3f * Vector3.up, 45f,
@@ -496,65 +501,6 @@ public static class DesktopSmokeTest {
         System.IO.File.WriteAllBytes(path, image.EncodeToPNG());
         Object.DestroyImmediate(cam.gameObject);
         Debug.Log("DesktopSmokeTest saved screenshot " + path);
-    }
-
-    // The coach drawn as the character mesh must be where the clip's joints
-    // are, as tall as the person, and mirrored for a left handed player.
-    static void check_body(GhostCoach gc, float t) {
-        CoachBody body = gc.coach_ghost.body;
-        check(body != null && body.renderer != null, "coach is drawn as the character mesh");
-        if (body == null)
-            return;
-        Table table_component = Object.FindFirstObjectByType<Table>();
-        Transform table = table_component.transform;
-        MotionFrame f = gc.coach_clip.sample(t);
-        List<string> names = gc.coach_clip.joint_names;
-        float worst = 0f;
-        foreach (string j in new string[] { "Hips", "Head", "RightHand", "RightForeArm", "LeftHand", "RightFoot", "LeftFoot" }) {
-            Transform bone = body.bone("mixamorig:" + j);
-            Vector3 expected = gc.coach_ghost.drawn(f.joints[names.IndexOf(j)]);
-            worst = Mathf.Max(worst, bone == null ? 99f : (bone.position - expected).magnitude);
-        }
-        check(worst < 0.03f, "the bones are where the clip's joints are, worst error " + worst.ToString("F3") + " m");
-
-        // Height and place of the skinned mesh.
-        Mesh baked = new Mesh();
-        body.renderer.BakeMesh(baked);
-        float min_y = 99f, max_y = -99f;
-        Vector3 sum = Vector3.zero;
-        Vector3[] vertices = baked.vertices;
-        foreach (Vector3 v in vertices) {
-            Vector3 w = body.renderer.transform.TransformPoint(v);
-            min_y = Mathf.Min(min_y, w.y);
-            max_y = Mathf.Max(max_y, w.y);
-            sum += w;
-        }
-        Vector3 centroid = sum / vertices.Length;
-        float top = gc.coach_ghost.drawn(f.joints[names.IndexOf("HeadTop_End")]).y;
-        float foot = Mathf.Min(gc.coach_ghost.drawn(f.joints[names.IndexOf("LeftFoot")]).y,
-                               gc.coach_ghost.drawn(f.joints[names.IndexOf("RightFoot")]).y);
-        check(max_y > top - 0.05f && max_y < top + 0.2f,
-              "mesh top " + max_y.ToString("F2") + " m matches the head top joint " + top.ToString("F2") + " m");
-        check(min_y < foot + 0.02f && min_y > foot - 0.2f,
-              "mesh bottom " + min_y.ToString("F2") + " m matches the feet " + foot.ToString("F2") + " m");
-        Vector3 hips = gc.coach_ghost.drawn(f.joints[names.IndexOf("Hips")]);
-        check(new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude < 0.45f,   // The coach is drawn 10 % larger.
-              "mesh is around the hips joint, " + new Vector2(centroid.x - hips.x, centroid.z - hips.z).magnitude.ToString("F2") + " m off");
-        Object.Destroy(baked);
-
-        // Mirrored for a left handed player: the left hand is where the
-        // right hand was, mirrored, and back again.
-        float top_y;
-        MotionClip mirrored = gc.coach_clip.mirrored(TableSpace.center(table_component, out top_y).x);
-        body.pose(mirrored, t, table);
-        MotionFrame mf = mirrored.sample(t);
-        Vector3 left = body.bone("mixamorig:LeftHand").position;
-        Vector3 mirrored_right = TableSpace.to_world(table, mf.joints[names.IndexOf("RightHand")]);
-        check((left - mirrored_right).magnitude < 0.03f,
-              "mirrored coach: the left hand is the mirrored right hand, error " + (left - mirrored_right).magnitude.ToString("F3") + " m");
-        body.pose(gc.coach_clip, t, table);
-        check((body.bone("mixamorig:RightHand").position - TableSpace.to_world(table, f.joints[names.IndexOf("RightHand")])).magnitude < 0.03f,
-              "back to the unmirrored pose");
     }
 
     // Render from a point toward another point, for checking visuals by eye.

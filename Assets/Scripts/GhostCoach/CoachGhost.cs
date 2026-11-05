@@ -7,9 +7,9 @@ using UnityEngine;
 // meets the ball.  A marker on the floor shows the player where to stand:
 // beside the coach, facing the same way.
 //
-// The ghost body is a simple stick figure (head, torso, paddle arm) built
-// from the head and paddle poses, since Quest recordings have no body.
-// A full body can replace it once Qualisys recordings are available.
+// The ghost body is a simple figure: capsules between the recorded joints
+// when the clip has them (mocap), else a stick figure (head, torso, paddle
+// arm) built from the head and paddle poses (Quest recordings).
 public class CoachGhost : MonoBehaviour {
 
     public Play play;
@@ -52,9 +52,7 @@ public class CoachGhost : MonoBehaviour {
                                             0.13f, 0.1f, 0.08f, 0.13f, 0.1f, 0.08f };
     Transform[] limbs;
     int[] limb_from, limb_to;
-
-    // The character mesh of the mocap rig, when the clip has one.
-    public CoachBody body;
+    int neck_joint = -1;                    // The head sits on the neck joint.
 
     public bool showing {
         get { return ghost_root != null && ghost_root.gameObject.activeSelf; }
@@ -162,13 +160,14 @@ public class CoachGhost : MonoBehaviour {
         Vector3 right = Vector3.Cross(Vector3.up, forward);
         head.SetPositionAndRotation(head_position, head_rotation);
 
-        if (body != null && clip.has_bones) {
-            body.pose(clip, t, frame, scale_origin, coach_scale);
-        } else if (limb_from != null && f.joints != null) {
+        if (limb_from != null && f.joints != null) {
             // Real joints from mocap.
             for (int i = 0 ; i < limbs.Length ; ++i)
                 place_limb(limbs[i], drawn(f.joints[limb_from[i]]),
                            drawn(f.joints[limb_to[i]]), bone_widths[i]);
+            // No neck: the head sphere rests on the top of the torso.
+            if (neck_joint >= 0)
+                head.position = drawn(f.joints[neck_joint]) + 0.12f * coach_scale * Vector3.up;
         } else {
             Vector3 neck = head_position - 0.15f * Vector3.up;
             Vector3 hips = head_position - 0.75f * Vector3.up;
@@ -213,6 +212,7 @@ public class CoachGhost : MonoBehaviour {
             }
         }
         bool mocap = (limb_from != null);
+        neck_joint = (mocap ? clip.joint_names.IndexOf("Neck") : -1);
         if (mocap && limbs == null) {
             limbs = new Transform[n];
             Material ghost = GhostVisuals.material("ghost");
@@ -220,27 +220,11 @@ public class CoachGhost : MonoBehaviour {
                 limbs[i] = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost " + bones[i, 0] + " " + bones[i, 1],
                                                   ghost, ghost_root);
         }
-        // The character mesh, if the clip comes with one.
-        bool figure = false;
-        if (clip.has_bones && !string.IsNullOrEmpty(clip.body)) {
-            if (body == null || body.resource != clip.body) {
-                if (body != null)
-                    Object.Destroy(body.root.gameObject);
-                Material skin = GhostVisuals.material("ghost_body");
-                body = CoachBody.load(clip.body, table, ghost_root, skin != null ? skin : GhostVisuals.material("ghost"));
-                if (body == null)
-                    Debug.LogWarning("GhostCoach: no character mesh " + clip.body + ", drawing the simple figure");
-            }
-            figure = (body != null);
-        }
-        if (body != null)
-            body.root.gameObject.SetActive(figure);
         if (limbs != null)
             foreach (Transform limb in limbs)
-                limb.gameObject.SetActive(mocap && !figure);
-        torso.gameObject.SetActive(!mocap && !figure);
-        arm.gameObject.SetActive(!mocap && !figure);
-        head.GetComponent<MeshRenderer>().enabled = !figure;
+                limb.gameObject.SetActive(mocap);
+        torso.gameObject.SetActive(!mocap);
+        arm.gameObject.SetActive(!mocap);
     }
 
     void place_stand_marker() {

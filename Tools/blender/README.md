@@ -9,13 +9,14 @@ for GhostCoach.  See the comment at the top of the script for options.
     Assets/Resources/GhostCoach/clips/coach_take0006.json --min-speed 2
 ```
 
-It writes two files next to each other in `Assets/Resources/GhostCoach/clips/`:
+It writes one file in `Assets/Resources/GhostCoach/clips/`: `NAME.json`, the
+coach's motion (racket, head, body joints and strokes, in table
+coordinates).  Numbers only, no video or names.  It goes in git with the
+consent of the person recorded.
 
-| File | What | In git? |
-|---|---|---|
-| `NAME.json` | The coach's motion: racket, head, body joints and the bone poses of the exported window. Numbers only, no video or names. | Yes, with the consent of the person recorded |
-| `NAME.body.bytes` | The character mesh with skin weights (the Mixamo mannequin of the rig). | **No.** Mixamo characters may not be redistributed as standalone files. Share it in LU Box and copy it into the same folder. |
-
-Without the `.body.bytes` file the app still works: the coach is then drawn
-as a simple figure of capsules instead of the character.  The automated
-tests skip the checks that need the mesh when the file is missing.
+The coach is drawn as a simple figure of capsules between the joints, so no
+character mesh or Mixamo rig is needed.  The Blender file needs an armature
+with the joint names listed in the script (Hips, Spine2, Neck, Head,
+HeadTop_End, LeftArm, ...; a prefix such as `mixamorig:` is ignored), the
+racket markers `racket:racket0..2`, the table corner markers `bord0` and
+`bord1` and the wrist markers `x_RWristIn` and `x_RWristOut`.
