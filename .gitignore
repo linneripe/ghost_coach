@@ -90,6 +90,4 @@ AGENTS.md
 # The coach's character mesh is a Mixamo character, which may not be
 # redistributed as a standalone file: share it in LU Box, not git (see
 # Tools/blender/README.md).  The clips (the motion itself) are in git.
-/Assets/Resources/GhostCoach/clips/*.body.bytes
-/Assets/Resources/GhostCoach/clips/*.body.bytes.meta
 /apk_ghost_mapping.txt
