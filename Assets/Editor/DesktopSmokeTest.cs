@@ -140,8 +140,10 @@ public static class DesktopSmokeTest {
                     Vector3 neck = gc.coach_ghost.drawn(mf.joints[names.IndexOf("Neck")]);
                     check(torso != null && (torso.transform.position - 0.5f * (hips + neck)).magnitude < 0.03f,
                           "the torso is between the hips and neck joints");
-                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf("HeadTop_End")]).y;
-                    float real_top = mf.joints[names.IndexOf("HeadTop_End")].y;
+                    string top_joint = names.Contains("HeadTop_End") ? "HeadTop_End" : "Head";
+                    int top_idx = names.IndexOf(top_joint);
+                    float head_top = gc.coach_ghost.drawn(mf.joints[top_idx]).y;
+                    float real_top = mf.joints[top_idx].y;
                     check(head_top > real_top * 1.05f && head_top < real_top * 1.15f,
                           "the coach is about 10 % larger than the recorded person (" + real_top.ToString("F2")
                           + " m becomes " + head_top.ToString("F2") + " m)");
