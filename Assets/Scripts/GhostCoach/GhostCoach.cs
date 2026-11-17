@@ -111,7 +111,7 @@ public class GhostCoach : MonoBehaviour {
             c = MockCoach.forehand_drive(table, ball_radius);
             show_message("Demo-coach (påhittad forehand)\nA: byt fas" + record_hint);
         }
-        if (!c.has_ball) {
+        if (!c.has_ball && !c.name.StartsWith("backhand_drive")) {
             // Mocap has no ball: add one that meets the coach's racket.
             float radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
             BallSynth.add(c, table, radius, 0.5f * play.paddle_hand.held_paddle.thickness);
