@@ -2,15 +2,16 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// The stroke menu: a panel floating in front of the player that opens with
-// the left Y button (M on the keyboard).  The player points at a stroke with a
-// laser from the paddle hand controller and pulls the trigger to choose it
-// (left click with the mouse on the desktop).  The panel also has buttons for
-// the coach's speed and for hiding or showing the coach.
+// The stroke menu: a panel hanging in the air beside the table, where it stays
+// during the game.  It is shown when the game starts, so the player can choose
+// a stroke at once.  The left Y button (M on the keyboard) starts and stops
+// pointing: then a laser from the paddle hand controller points at a stroke
+// and the trigger chooses it (left click with the mouse on the desktop).  The
+// panel also has buttons for the coach's speed and for hiding or showing the
+// coach.
 //
 // Built in code, with no event system: the laser is intersected with the
-// panel's plane and the buttons are rectangles on it.  It stays where it was
-// opened until it is closed.
+// panel's plane and the buttons are rectangles on it.
 public class StrokePanel : MonoBehaviour {
 
     public Play play;
@@ -25,8 +26,12 @@ public class StrokePanel : MonoBehaviour {
     public bool use_ray = false;
     public Ray ray;
 
-    public bool open { get; private set; }
+    public bool open { get; private set; }        // Pointing at the panel: laser and clicks.
     public int hover { get; private set; }
+
+    public bool hanging {
+        get { return root != null && root.gameObject.activeSelf; }
+    }
 
     class Item {
         public string name;
@@ -64,35 +69,48 @@ public class StrokePanel : MonoBehaviour {
         hover = -1;
     }
 
-    // Open the panel in front of the player, where they are looking.
-    public void show() {
+    // Hang the panel in the air at a place, turned toward where the player
+    // looks from.  It stays there.
+    public void hang(Vector3 position, Vector3 viewed_from) {
         if (root == null)
             build();
-        Camera head = (play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
-        Vector3 forward = Vector3.forward;
-        Vector3 position = Vector3.zero;
-        if (head != null) {
-            forward = Vector3.ProjectOnPlane(head.transform.forward, Vector3.up);
-            position = head.transform.position;
-        }
+        Vector3 forward = Vector3.ProjectOnPlane(position - viewed_from, Vector3.up);
         forward = (forward.sqrMagnitude < 0.01f ? Vector3.forward : forward.normalized);
-        root.position = position + distance * forward - drop * Vector3.up;
+        root.position = position;
         root.rotation = Quaternion.LookRotation(forward, Vector3.up);
+        root.gameObject.SetActive(true);
+        refresh();
+    }
+
+    // Start pointing at the panel.  If it is not hanging yet it is placed in
+    // front of the player, where they are looking.
+    public void show() {
+        if (root == null || !hanging) {
+            Camera head = (play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
+            Vector3 forward = Vector3.forward;
+            Vector3 position = Vector3.zero;
+            if (head != null) {
+                forward = Vector3.ProjectOnPlane(head.transform.forward, Vector3.up);
+                position = head.transform.position;
+            }
+            forward = (forward.sqrMagnitude < 0.01f ? Vector3.forward : forward.normalized);
+            hang(position + distance * forward - drop * Vector3.up, position);
+        }
         refresh();
         open = true;
         hover = -1;
-        root.gameObject.SetActive(true);
         laser.gameObject.SetActive(true);
         dot.gameObject.SetActive(true);
     }
 
+    // Stop pointing.  The panel keeps hanging.
     public void close() {
         open = false;
         hover = -1;
         if (root != null) {
-            root.gameObject.SetActive(false);
             laser.gameObject.SetActive(false);
             dot.gameObject.SetActive(false);
+            refresh();
         }
     }
 
@@ -115,6 +133,7 @@ public class StrokePanel : MonoBehaviour {
             item.selected = (i == coach.stroke_choice);
             item.text.text = coach.strokes[i].label + (available ? "" : "\n(data saknas)");
         }
+        title.text = (open ? "Välj slag" : "Slag");
         speed_item.text.text = "Hastighet\n" + Mathf.RoundToInt(100f * coach.coach_ghost.speed) + " %";
         coach_item.text.text = (coach.coach_visible ? "Dölj\ncoach" : "Visa\ncoach");
         paint();
@@ -136,7 +155,7 @@ public class StrokePanel : MonoBehaviour {
     }
 
     void Update() {
-        if (!open || root == null)
+        if (!open || !hanging)
             return;
         Ray r;
         if (!pointer(out r)) {
@@ -256,7 +275,7 @@ public class StrokePanel : MonoBehaviour {
                                () => coach.change_speed());
         coach_item = make_item("coach", new Rect(-0.09f, row - 0.045f, 0.18f, 0.09f), "Dölj coach", 0.0031f,
                                () => coach.toggle_coach());
-        make_item("close", new Rect(0.11f, row - 0.045f, 0.18f, 0.09f), "Stäng", 0.0031f, () => coach.close_panel());
+        make_item("close", new Rect(0.11f, row - 0.045f, 0.18f, 0.09f), "Klar", 0.0031f, () => coach.close_panel());
 
         laser = GhostVisuals.line("panel laser", laser_material, 0.004f, transform);
         dot = GhostVisuals.primitive(PrimitiveType.Sphere, "panel laser dot", laser_material, transform);

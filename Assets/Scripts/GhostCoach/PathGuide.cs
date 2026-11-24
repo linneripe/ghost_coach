@@ -15,6 +15,9 @@ public class PathGuide : MonoBehaviour {
     public float path_follow = 0.35f;       // Seconds of follow-through drawn after contact.
     public float history_seconds = 2f;      // Player motion kept for scoring.
     public int stroke = 0;                  // Which stroke of the clip is the reference.
+    // The paths and the marker are not drawn: the player only gets the score.
+    // Turn on to see the coach's path and the player's own.
+    public bool draw_path = false;
     // Table coordinates: from where the coach stood when recording to where
     // the player stands.  The coach's path is drawn there.
     public Vector3 offset = Vector3.zero;
@@ -65,6 +68,12 @@ public class PathGuide : MonoBehaviour {
         player_line.positionCount = 0;
         pending_contacts.Clear();
         root.gameObject.SetActive(true);
+        apply_draw();
+    }
+
+    void apply_draw() {
+        foreach (Renderer r in root.GetComponentsInChildren<Renderer>(true))
+            r.enabled = draw_path;
     }
 
     public void hide() {
@@ -151,6 +160,7 @@ public class PathGuide : MonoBehaviour {
         pending_contacts.RemoveAt(0);
         last_score = StrokeCompare.compare(coach, coach_contact, player_recent, t);
         set_path(player_line, player_recent, t);
+        apply_draw();
         if (stroke_scored != null)
             stroke_scored(last_score);
     }

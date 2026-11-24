@@ -9,9 +9,11 @@ using UnityEngine.InputSystem;
 //   Phase 2 Path (play): the player plays with the coach's paddle path
 //     shown as support, and gets a score and one tip per stroke (PathGuide,
 //     StrokeCompare).  The coach stays beside the player.
-// The player chooses one of four strokes in the stroke panel (StrokePanel):
-// left Y opens it, a laser from the paddle hand controller points and the
-// trigger chooses (M and the mouse on the keyboard).  Right A switches phase
+// The player chooses one of four strokes in the stroke panel (StrokePanel).  It
+// hangs in the air beside the table from the start, with the laser on so a
+// stroke can be chosen at once.  Left Y turns the laser on and off again (M
+// on the keyboard); the laser comes from the paddle hand controller and the
+// trigger chooses (the mouse on the keyboard).  Right A switches phase
 // (P on the keyboard).  Right B hides or shows the coach (K on the keyboard;
 // it starts and stops recording a coach clip if recording is turned on).
 // Clicking the right thumbstick (L on the keyboard) changes the coach's
@@ -61,6 +63,24 @@ public class GhostCoach : MonoBehaviour {
         {"forehand", "Forehand"}, {"forehand_drive", "Forehand drive"},
         {"backhand", "Backhand"}, {"backhand_drive", "Backhand drive"},
     };
+
+    // The number a take ends with (backhand_drive0009 is 9), or -1.
+    static int take_number(MotionClip c) {
+        int end = c.name.Length, start = end;
+        while (start > 0 && char.IsDigit(c.name[start - 1]))
+            start -= 1;
+        int n;
+        return (start < end && int.TryParse(c.name.Substring(start), out n) ? n : -1);
+    }
+
+    // The newest take of a stroke: the highest take number.
+    public static MotionClip newest_clip(List<MotionClip> clips, string id) {
+        MotionClip best = null;
+        foreach (MotionClip c in clips)
+            if (clip_is(c, id) && (best == null || take_number(c) >= take_number(best)))
+                best = c;
+        return best;
+    }
 
     static bool clip_is(MotionClip c, string id) {
         string name = c.name.ToLower().Replace(' ', '_');
@@ -159,11 +179,7 @@ public class GhostCoach : MonoBehaviour {
             StrokeDef d = new StrokeDef();
             d.id = stroke_names[i, 0];
             d.label = stroke_names[i, 1];
-            foreach (MotionClip c in clips)
-                if (clip_is(c, d.id)) {
-                    d.clip = c;
-                    break;
-                }
+            d.clip = newest_clip(clips, d.id);
             strokes.Add(d);
             Debug.Log("GhostCoach stroke " + d.label + ": " + (d.available ? d.clip.name : "no data"));
         }
@@ -172,6 +188,8 @@ public class GhostCoach : MonoBehaviour {
         if (first >= 0) {
             experiment.start_session();
             choose_stroke(first);
+            hang_panel();
+            open_panel();           // Choose a stroke at once.
         } else {
             MotionClip c = (clips.Count > 0 ? clips[0] : null);
             if (c == null) {
@@ -289,7 +307,13 @@ public class GhostCoach : MonoBehaviour {
             return;
         stroke_choice = index;
         use_clip(strokes[index].clip);
-        close_panel();
+        // The ball feed comes to the side the stroke is played on.
+        if (ball_feeder != null)
+            ball_feeder.stroke_side = (strokes[index].id.StartsWith("backhand") ? -1f : 1f);
+        if (panel != null && panel.open)
+            panel.close();
+        if (panel != null)
+            panel.refresh();
         show_status();
         play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
         experiment.log_event("stroke_select", strokes[index].id);
@@ -325,15 +349,32 @@ public class GhostCoach : MonoBehaviour {
         get { return panel != null && panel.open; }
     }
 
+    // Hang the stroke panel in the air beside the table: next to the player,
+    // on the side away from the coach, a little ahead and at eye height, turned
+    // toward the player.  It stays there during the game.
+    public void hang_panel() {
+        if (panel == null || strokes.Count == 0 || !coach_ghost.has_spot)
+            return;
+        Transform t = table.transform;
+        Vector3 spot = coach_ghost.player_spot;
+        float top_y;
+        float side = (TableSpace.to_table(t, spot).x < TableSpace.center(table, out top_y).x ? -1f : 1f);
+        Vector3 position = spot + 1.1f * t.forward + 0.5f * side * t.right + 1.4f * Vector3.up;
+        panel.hang(position, spot + 1.5f * Vector3.up);
+    }
+
     public void open_panel() {
         if (panel == null || strokes.Count == 0)
             return;
+        if (!panel.hanging)
+            hang_panel();
         panel.show();
         show_message(DesktopRig.active != null
                      ? "Peka med musen på ett slag\nKlicka: välj   M: stäng"
                      : "Peka på ett slag\nAvtryckare: välj   Y: stäng");
     }
 
+    // Stop pointing at the panel; it keeps hanging.
     public void close_panel() {
         if (panel != null && panel.open) {
             panel.close();
@@ -468,6 +509,8 @@ public class GhostCoach : MonoBehaviour {
 
     public void change_speed() {
         float s = coach_ghost.next_speed();
+        if (panel != null)
+            panel.refresh();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
         experiment.log_event("coach_speed", Mathf.RoundToInt(100f * s) + "%");
     }

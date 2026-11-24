@@ -161,8 +161,8 @@ public static class DesktopSmokeTest {
                     Vector3 player = TableSpace.to_table(table_component.transform, gc.coach_ghost.player_spot);
                     check(Mathf.Abs(player.x - centre_x) > 0.5f && Mathf.Abs(player.x - centre_x) < 1.5f,
                           "the player's place is beside the coach, " + (player.x - centre_x).ToString("F2") + " m");
-                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf("HeadTop_End")]).y;
-                    float real_top = mf.joints[names.IndexOf("HeadTop_End")].y;
+                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf(names.Contains("HeadTop_End") ? "HeadTop_End" : "Head")]).y;
+                    float real_top = mf.joints[names.IndexOf(names.Contains("HeadTop_End") ? "HeadTop_End" : "Head")].y;
                     check(head_top > real_top * 1.05f && head_top < real_top * 1.15f,
                           "the coach is about 10 % larger than the recorded person (" + real_top.ToString("F2")
                           + " m becomes " + head_top.ToString("F2") + " m)");
@@ -253,10 +253,27 @@ public static class DesktopSmokeTest {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             check(coach != null, "GhostCoach created");
             if (coach == null) { finish(); return; }
+            check(coach.panel != null && coach.panel.hanging && coach.panel_open,
+                  "the stroke panel hangs in the air and is on from the start");
+            save_view(rig.head_camera.transform.position, coach.panel.button_center("stroke backhand_drive"), 70f,
+                      "Logs/smoke_panel_at_start.png");
+            coach.close_panel();
+            check(!coach.panel_open && coach.panel.hanging, "Y turns the laser off, the panel keeps hanging");
             check(coach.strokes.Count == 4 && coach.strokes[0].id == "forehand" && coach.strokes[3].id == "backhand_drive",
                   "four strokes to choose from");
-            check(coach.strokes[3].available && !coach.strokes[0].available,
-                  "backhand drive has data, forehand has none yet");
+            List<MotionClip> takes = new List<MotionClip>();
+            foreach (string n in new string[] { "backhand_drive0008", "backhand_drive0009", "backhand_drive", "backhand0010", "forehand_drive0003" }) {
+                MotionClip tc = new MotionClip();
+                tc.name = n;
+                takes.Add(tc);
+            }
+            check(GhostCoach.newest_clip(takes, "backhand_drive").name == "backhand_drive0009"
+                  && GhostCoach.newest_clip(takes, "backhand").name == "backhand0010"
+                  && GhostCoach.newest_clip(takes, "forehand_drive").name == "forehand_drive0003"
+                  && GhostCoach.newest_clip(takes, "forehand") == null,
+                  "the newest take of a stroke is used, and takes of other strokes are not mixed in");
+            check(coach.strokes[3].available && !coach.strokes[0].available && coach.strokes[3].clip.name == "backhand_drive0009",
+                  "backhand drive has data (the newest take), forehand has none yet");
             check(coach.stroke_choice == 3 && coach.coach_clip.name.StartsWith("backhand_drive")
                   && coach.stroke == coach.coach_clip.strokes().Count / 2,
                   "starts on the first stroke with data, repeating its middle stroke (" + coach.stroke + ")");
@@ -346,7 +363,8 @@ public static class DesktopSmokeTest {
                 b.freeze = true;
             coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Path && coach.coach_ghost.showing
-                  && coach.path_guide.showing, "play phase keeps the coach and shows the path");
+                  && coach.path_guide.showing, "play phase keeps the coach and scores");
+            check(!path_drawn(), "no path is drawn in the play phase, the player only gets the score");
             check(coach.path_guide.coach_path_points > 10,
                   "coach paddle path drawn with " + coach.path_guide.coach_path_points + " points");
             free_haptic_before = rig.free_haptic_count;
@@ -361,6 +379,7 @@ public static class DesktopSmokeTest {
                   "stroke scored " + (sc == null ? "none" : sc.score + " \"" + sc.tip + "\""));
             check(play.billboard.text.StartsWith("Score"), "score shown on billboard");
             check(rig.free_haptic_count > free_haptic_before, "score vibration in free hand");
+            check(!path_drawn(), "the player's own path is not drawn after a scored stroke either");
             GameObject line = GameObject.Find("coach paddle path");
             if (line != null)
                 save_screenshot(line.GetComponent<LineRenderer>().GetPosition(0), "Logs/smoke_path_phase.png");
@@ -596,8 +615,20 @@ public static class DesktopSmokeTest {
         else if (phase == 25 && t > 0.2f) {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             coach.OnGhostPanelClick();
-            check(!coach.panel_open && coach.stroke_choice == 3 && coach.coach_ghost.showing,
-                  "choosing a stroke closes the panel and shows the coach");
+            check(!coach.panel_open && coach.panel.hanging && coach.stroke_choice == 3 && coach.coach_ghost.showing,
+                  "choosing a stroke turns the laser off, the panel keeps hanging and the coach shows it");
+            // The ball comes at another angle for a forehand than for a backhand.
+            BallFeeder feeder = coach.ball_feeder;
+            check(feeder.stroke_side < 0f, "a backhand stroke feeds to the backhand side");
+            feeder.feed_ball();
+            Vector3 backhand_launch = feeder.last_launch_velocity;
+            feeder.stroke_side = 1f;
+            feeder.feed_ball();
+            Vector3 forehand_launch = feeder.last_launch_velocity;
+            check(backhand_launch.x < -0.2f && forehand_launch.x > 0.2f,
+                  "the fed ball's angle follows the stroke, sideways speed backhand " + backhand_launch.x.ToString("F2")
+                  + " and forehand " + forehand_launch.x.ToString("F2") + " m/s");
+            feeder.stroke_side = -1f;
             check(coach.path_guide.stroke == coach.stroke && coach.coach_ghost.stroke == coach.stroke,
                   "the coach and the path use the same stroke");
             // In desktop mode the hints name the keys, not the controller buttons.
@@ -711,6 +742,17 @@ public static class DesktopSmokeTest {
     static string binding(GhostCoach coach, string action) {
         var input = coach.GetComponent<UnityEngine.InputSystem.PlayerInput>();
         return input.actions.FindAction(action).bindings[0].effectivePath;
+    }
+
+    // Whether anything of the coach's path or the player's path is drawn.
+    static bool path_drawn() {
+        GameObject path_visuals = GameObject.Find("PathGuide visuals");
+        if (path_visuals == null)
+            return false;
+        foreach (Renderer r in path_visuals.GetComponentsInChildren<Renderer>(true))
+            if (r.enabled)
+                return true;
+        return false;
     }
 
     // Point the laser from the head at the middle of a panel button.
