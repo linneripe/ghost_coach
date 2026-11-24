@@ -203,8 +203,13 @@ public class DesktopRig : MonoBehaviour
             float scroll = mouse.scroll.ReadValue().y;
             if (scroll != 0f)
                 reach = Mathf.Clamp(reach + 0.0005f * scroll, 0.25f, 1.0f);
-            if (mouse.leftButton.wasPressedThisFrame)
-                click_ui();
+            if (mouse.leftButton.wasPressedThisFrame) {
+                GhostCoach panel_owner = FindFirstObjectByType<GhostCoach>();
+                if (panel_owner != null && panel_owner.panel_open)
+                    panel_owner.OnGhostPanelClick();
+                else
+                    click_ui();
+            }
         }
 
         if (keys == null)
@@ -238,6 +243,7 @@ public class DesktopRig : MonoBehaviour
         {
             if (keys.pKey.wasPressedThisFrame) coach.OnGhostTogglePhase();
             if (keys.kKey.wasPressedThisFrame) coach.OnGhostRecord();
+            if (keys.mKey.wasPressedThisFrame) coach.OnGhostMenu();
             if (keys.lKey.wasPressedThisFrame) coach.OnGhostSpeed();
             if (keys.nKey.wasPressedThisFrame) coach.OnGhostNewSession();
             if (keys.backspaceKey.wasPressedThisFrame) coach.OnGhostReset();
@@ -349,12 +355,13 @@ public class DesktopRig : MonoBehaviour
             "Z/X: open/close face   C: forehand/backhand (" + (backhand ? "backhand" : "forehand") + ")\n" +
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
             "Tab: settings menu     Left click: press menu buttons\n" +
-            "P: coach/path phase   K: next stroke\n" +
+            "P: watch/play   K: hide/show coach\n" +
+            "M: stroke panel (point with the mouse, left click)\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
             "N: next test participant   Backspace: reset\n" +
             "G: hide/show racket and ball in hand   F: ball feed\n" +
             "H: hide help";
-        GUI.Box(new Rect(10, 10, 420, 200), "");
-        GUI.Label(new Rect(18, 14, 410, 185), help);
+        GUI.Box(new Rect(10, 10, 420, 215), "");
+        GUI.Label(new Rect(18, 14, 410, 200), help);
     }
 }

@@ -22,6 +22,7 @@ public class ControllerMapper {
 
     public Action<string> fire;
     public bool move_table_mode, adjust_grip_mode;
+    public bool panel_open;                 // The stroke panel is open: the trigger clicks in it.
     public float hold_seconds = 1.5f;
 
     const int hands = 2, buttons = 6;       // Hand index 0 is left, 1 is right.
@@ -45,6 +46,14 @@ public class ControllerMapper {
         if (edge[0, (int)Btn.Menu] == 1)
             fire("ShowSettings");
 
+        // The stroke panel takes the paddle hand's trigger as a click, and Y
+        // closes it again.  Nothing else is wanted while choosing a stroke.
+        if (panel_open) {
+            if (edge[paddle_hand, (int)Btn.Trigger] == 1) fire("GhostPanelClick");
+            if (edge[free_hand, (int)Btn.Secondary] == 1) fire("GhostMenu");
+            return;
+        }
+
         int primary = edge[free_hand, (int)Btn.Primary];
         if (move_table_mode) {
             if (primary == 1) fire("MoveTableStart");
@@ -58,7 +67,7 @@ public class ControllerMapper {
 
         if (edge[free_hand, (int)Btn.Trigger] == 1) fire("RobotServe");
         if (edge[free_hand, (int)Btn.Grip] == 1) fire("HoldBall");
-        if (edge[free_hand, (int)Btn.Secondary] == 1) fire("HoldBall");
+        if (edge[free_hand, (int)Btn.Secondary] == 1) fire("GhostMenu");
         if (primary == 1) fire("GhostToggleHands");
 
         if (edge[paddle_hand, (int)Btn.Primary] == 1) fire("GhostTogglePhase");

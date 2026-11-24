@@ -30,6 +30,7 @@ public static class ControllerMapperTest
             right_handed();
             left_handed();
             button_modes();
+            stroke_panel();
             hold_for_new_participant();
             holding_does_not_repeat();
             dedup();
@@ -75,11 +76,11 @@ public static class ControllerMapperTest
         Fake f = new Fake();
         check(press(m, f, false, true, Btn.Trigger, 0f) == "RobotServe", "right handed: left trigger serves");
         check(press(m, f, false, true, Btn.Grip, 1f) == "HoldBall", "right handed: left grip takes a ball");
-        check(press(m, f, false, true, Btn.Secondary, 2f) == "HoldBall", "right handed: left Y takes a ball");
+        check(press(m, f, false, true, Btn.Secondary, 2f) == "GhostMenu", "right handed: left Y opens the stroke panel");
         check(press(m, f, false, true, Btn.Primary, 3f) == "GhostToggleHands", "right handed: left X hides or shows racket and ball");
         check(press(m, f, false, true, Btn.Menu, 4f) == "ShowSettings", "right handed: left menu button opens the settings");
         check(press(m, f, false, false, Btn.Primary, 5f) == "GhostTogglePhase", "right handed: right A switches phase");
-        check(press(m, f, false, false, Btn.Secondary, 6f) == "GhostRecord", "right handed: right B records");
+        check(press(m, f, false, false, Btn.Secondary, 6f) == "GhostRecord", "right handed: right B hides or shows the coach");
         check(press(m, f, false, false, Btn.Thumbstick, 7f) == "GhostSpeed", "right handed: right thumbstick click changes speed");
         check(press(m, f, false, false, Btn.Trigger, 8f) == "ToggleBallFeed", "right handed: the paddle hand's trigger toggles ball feed");
         check(press(m, f, false, false, Btn.Menu, 9f) == "", "right handed: the right controller has no menu button");
@@ -93,7 +94,8 @@ public static class ControllerMapperTest
         check(press(m, f, true, false, Btn.Grip, 1f) == "HoldBall", "left handed: right grip takes a ball");
         check(press(m, f, true, false, Btn.Primary, 2f) == "GhostToggleHands", "left handed: right A hides or shows racket and ball");
         check(press(m, f, true, true, Btn.Primary, 3f) == "GhostTogglePhase", "left handed: left X switches phase");
-        check(press(m, f, true, true, Btn.Secondary, 4f) == "GhostRecord", "left handed: left Y records");
+        check(press(m, f, true, true, Btn.Secondary, 4f) == "GhostRecord", "left handed: left Y hides or shows the coach");
+        check(press(m, f, true, false, Btn.Secondary, 4.5f) == "GhostMenu", "left handed: right B opens the stroke panel");
         check(press(m, f, true, true, Btn.Thumbstick, 5f) == "GhostSpeed", "left handed: left thumbstick click changes speed");
         check(press(m, f, true, true, Btn.Menu, 6f) == "ShowSettings", "left handed: the menu button is still the left one");
         check(press(m, f, true, true, Btn.Trigger, 7f) == "ToggleBallFeed", "left handed: the paddle hand's trigger toggles ball feed");
@@ -124,6 +126,24 @@ public static class ControllerMapperTest
         check(string.Join(",", fired) == "AdjustGripStart,AdjustGripEnd", "adjust grip: X starts and ends: " + string.Join(",", fired));
         m.adjust_grip_mode = false;
         check(press(m, f, false, true, Btn.Trigger, 5f) == "RobotServe", "back to normal after the modes");
+    }
+
+    // With the stroke panel open the paddle hand's trigger clicks in it, Y
+    // closes it, and the other buttons do nothing.
+    static void stroke_panel()
+    {
+        ControllerMapper m = mapper();
+        Fake f = new Fake();
+        m.panel_open = true;
+        check(press(m, f, false, false, Btn.Trigger, 1f) == "GhostPanelClick", "panel: the paddle hand's trigger clicks");
+        check(press(m, f, false, true, Btn.Secondary, 2f) == "GhostMenu", "panel: left Y closes it");
+        check(press(m, f, false, true, Btn.Trigger, 3f) == "", "panel: the free hand's trigger does not serve");
+        check(press(m, f, false, false, Btn.Primary, 4f) == "", "panel: A does not switch phase");
+        check(press(m, f, false, false, Btn.Secondary, 5f) == "", "panel: B does not hide the coach");
+        check(press(m, f, false, true, Btn.Menu, 6f) == "ShowSettings", "panel: the menu button still opens the settings");
+        check(press(m, f, true, true, Btn.Trigger, 7f) == "GhostPanelClick", "panel, left handed: the left trigger clicks");
+        m.panel_open = false;
+        check(press(m, f, false, false, Btn.Trigger, 8f) == "ToggleBallFeed", "panel closed: the trigger feeds balls again");
     }
 
     static void hold_for_new_participant()

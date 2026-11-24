@@ -37,6 +37,7 @@ public class ControllerInput : MonoBehaviour {
             }
         mapper.move_table_mode = buttons.move_table_mode;
         mapper.adjust_grip_mode = buttons.adjust_grip_mode;
+        mapper.panel_open = (coach != null && coach.panel_open);
         mapper.update(source, play.paddle_hand.wand.left, Time.unscaledTime);
     }
 
@@ -52,6 +53,8 @@ public class ControllerInput : MonoBehaviour {
         case "AdjustGripEnd": buttons.OnAdjustGripEnd(); break;
         case "GhostTogglePhase": if (coach != null) coach.OnGhostTogglePhase(); break;
         case "GhostRecord": if (coach != null) coach.OnGhostRecord(); break;
+        case "GhostMenu": if (coach != null) coach.OnGhostMenu(); break;
+        case "GhostPanelClick": if (coach != null) coach.OnGhostPanelClick(); break;
         case "GhostSpeed": if (coach != null) coach.OnGhostSpeed(); break;
         case "GhostToggleHands": if (coach != null) coach.OnGhostToggleHands(); break;
         case "GhostNewSession": if (coach != null) coach.OnGhostNewSession(); break;
