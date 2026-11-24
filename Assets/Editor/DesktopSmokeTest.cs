@@ -161,8 +161,8 @@ public static class DesktopSmokeTest {
                     Vector3 player = TableSpace.to_table(table_component.transform, gc.coach_ghost.player_spot);
                     check(Mathf.Abs(player.x - centre_x) > 0.5f && Mathf.Abs(player.x - centre_x) < 1.5f,
                           "the player's place is beside the coach, " + (player.x - centre_x).ToString("F2") + " m");
-                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf("HeadTop_End")]).y;
-                    float real_top = mf.joints[names.IndexOf("HeadTop_End")].y;
+                    float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf(names.Contains("HeadTop_End") ? "HeadTop_End" : "Head")]).y;
+                    float real_top = mf.joints[names.IndexOf(names.Contains("HeadTop_End") ? "HeadTop_End" : "Head")].y;
                     check(head_top > real_top * 1.05f && head_top < real_top * 1.15f,
                           "the coach is about 10 % larger than the recorded person (" + real_top.ToString("F2")
                           + " m becomes " + head_top.ToString("F2") + " m)");
