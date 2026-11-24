@@ -594,8 +594,14 @@ public static class DesktopSmokeTest {
                   "choosing a stroke closes the panel and shows the coach");
             check(coach.path_guide.stroke == coach.stroke && coach.coach_ghost.stroke == coach.stroke,
                   "the coach and the path use the same stroke");
+            // In desktop mode the hints name the keys, not the controller buttons.
+            string hint = play.billboard.text;
+            check(hint.Contains("P:") && hint.Contains("M:") && !hint.Contains("A:") && !hint.Contains("Y:"),
+                  "desktop hints name keys (P, M), billboard \"" + hint.Replace("\n", " / ") + "\"");
             coach.OnGhostMenu();
             check(coach.panel_open, "Y opens the panel again");
+            check(play.billboard.text.Contains("Klicka") && !play.billboard.text.Contains("Avtryckare"),
+                  "desktop panel hint says click: " + play.billboard.text.Replace("\n", " / "));
             coach.OnGhostMenu();
             check(!coach.panel_open, "and closes it");
             finish();

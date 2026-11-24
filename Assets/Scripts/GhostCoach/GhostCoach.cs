@@ -301,8 +301,14 @@ public class GhostCoach : MonoBehaviour {
         string label = (stroke_choice >= 0 ? strokes[stroke_choice].label
                         : (coach_clip != null ? coach_clip.name : ""));
         show_message(label + "\n" + (phase == Phase.Coach
-                         ? "Titta på coachen\nA: spela   Y: byt slag"
-                         : "Din tur\nA: titta   Y: byt slag"));
+                         ? "Titta på coachen\n" + button("A", "P") + ": spela   " + button("Y", "M") + ": byt slag"
+                         : "Din tur\n" + button("A", "P") + ": titta   " + button("Y", "M") + ": byt slag"));
+    }
+
+    // Name of a button in the hints: the controller button in the headset, the
+    // key in desktop mode (mouse and keyboard).
+    static string button(string controller, string key) {
+        return (DesktopRig.active != null ? key : controller);
     }
 
     // Hide the coach, or bring it back.
@@ -311,7 +317,7 @@ public class GhostCoach : MonoBehaviour {
         update_ghost();
         if (panel != null)
             panel.refresh();
-        show_message(coach_visible ? "Coachen är tillbaka" : "Coachen är dold\nB: visa igen");
+        show_message(coach_visible ? "Coachen är tillbaka" : "Coachen är dold\n" + button("B", "K") + ": visa igen");
         experiment.log_event("coach_visible", coach_visible ? "shown" : "hidden");
     }
 
@@ -323,7 +329,9 @@ public class GhostCoach : MonoBehaviour {
         if (panel == null || strokes.Count == 0)
             return;
         panel.show();
-        show_message("Peka på ett slag\nAvtryckare: välj   Y: stäng");
+        show_message(DesktopRig.active != null
+                     ? "Peka med musen på ett slag\nKlicka: välj   M: stäng"
+                     : "Peka på ett slag\nAvtryckare: välj   Y: stäng");
     }
 
     public void close_panel() {
