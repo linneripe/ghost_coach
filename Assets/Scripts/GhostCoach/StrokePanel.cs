@@ -307,13 +307,10 @@ public class StrokePanel : MonoBehaviour {
 
         // What the buttons on the controllers do, and how to get the panel back.
         flat("help line", line_material, 0f, -0.190f, 0.52f, 0.003f, 0.0035f);
-        string[] lines = (DesktopRig.active != null
-            ? new string[] { "Tangentbord", "P: titta eller spela", "K: dölj eller visa coachen",
-                             "L: coachens hastighet", "F: bollar på eller av",
-                             "Mus", "M: peka på menyn för att byta slag" }
-            : new string[] { "Racket-handen", "A: titta eller spela", "B: dölj eller visa coachen",
-                             "Spak (tryck): coachens hastighet", "Avtryckare: bollar på eller av",
-                             "Andra handen", "Y: peka på menyn för att byta slag" });
+        string[] lines = new string[] {
+            "Racket-handen", "A: titta eller spela", "B: dölj eller visa coachen",
+            "Spak (tryck): coachens hastighet", "Avtryckare: bollar på eller av",
+            "Andra handen", "Y: peka på menyn för att byta slag" };
         for (int i = 0 ; i < lines.Length ; ++i) {
             bool heading = (i == 0 || i == 5);
             TextMesh t = make_text(lines[i], new Vector3(-0.27f, -0.215f - 0.0295f * i, -0.004f), 0.0029f);
