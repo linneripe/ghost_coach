@@ -22,14 +22,16 @@ public static class GlassStyle {
         Texture2D t;
         if (textures.TryGetValue(key, out t) && t != null)
             return t;
-        int pw = Mathf.Max(4, Mathf.RoundToInt((w + 2f * soft) * pixels_per_meter));
-        int ph = Mathf.Max(4, Mathf.RoundToInt((h + 2f * soft) * pixels_per_meter));
+        // Big shapes (a plate behind far away text) get fewer pixels per meter.
+        float ppm = Mathf.Min(pixels_per_meter, 1024f / Mathf.Max(w + 2f * soft, h + 2f * soft));
+        int pw = Mathf.Max(4, Mathf.RoundToInt((w + 2f * soft) * ppm));
+        int ph = Mathf.Max(4, Mathf.RoundToInt((h + 2f * soft) * ppm));
         t = new Texture2D(pw, ph, TextureFormat.RGBA32, false);
         t.wrapMode = TextureWrapMode.Clamp;
         t.filterMode = FilterMode.Bilinear;
-        float hx = 0.5f * w * pixels_per_meter, hy = 0.5f * h * pixels_per_meter;
-        float r = Mathf.Min(radius * pixels_per_meter, Mathf.Min(hx, hy));
-        float reach = soft * pixels_per_meter;
+        float hx = 0.5f * w * ppm, hy = 0.5f * h * ppm;
+        float r = Mathf.Min(radius * ppm, Mathf.Min(hx, hy));
+        float reach = soft * ppm;
         Color32[] pixels = new Color32[pw * ph];
         for (int y = 0 ; y < ph ; ++y)
             for (int x = 0 ; x < pw ; ++x) {
