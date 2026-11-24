@@ -5,6 +5,7 @@ using UnityEngine;
 // when the text is empty.  The edge can be tinted, e.g. by the score.
 public class MessagePlate : MonoBehaviour {
 
+    public bool show_plate = false;          // Off: the black text stands on its own.
     TextMesh text;
     PixelText pixels;
     Renderer edge, body;
@@ -39,8 +40,8 @@ public class MessagePlate : MonoBehaviour {
 
     void LateUpdate() {
         bool show = pixels.has_text && text.gameObject.activeInHierarchy;
-        edge.enabled = body.enabled = show;
-        if (!show)
+        edge.enabled = body.enabled = show && show_plate;
+        if (!show || !show_plate)
             return;
         Vector3 s = transform.lossyScale;
         if (s.x < 1e-5f || s.y < 1e-5f)

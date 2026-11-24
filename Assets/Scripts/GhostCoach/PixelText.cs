@@ -46,7 +46,7 @@ public class PixelText : MonoBehaviour {
         Shader shader = Resources.Load<Shader>("GhostCoach/GhostUnlit");
         Material m = (shader != null ? new Material(shader) : new Material(GhostVisuals.material("ghost")));
         m.mainTexture = font_atlas();
-        m.color = new Color(0.96f, 0.98f, 1f, 1f);
+        m.color = new Color(0.03f, 0.03f, 0.04f, 1f);
         m.renderQueue = 3020;
         renderer_.sharedMaterial = m;
         renderer_.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
