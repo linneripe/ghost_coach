@@ -87,6 +87,7 @@ public class GhostCoach : MonoBehaviour {
 
         TableSpawn spawn = g.AddComponent<TableSpawn>();
         spawn.play = play;
+        spawn.coach = ghost;
 
         ControllerInput controllers = g.AddComponent<ControllerInput>();
         controllers.play = play;
@@ -116,11 +117,6 @@ public class GhostCoach : MonoBehaviour {
             float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
             c = MockCoach.forehand_drive(table, ball_radius);
             show_message("Demo-coach (påhittad forehand)\nA: byt fas" + record_hint);
-        }
-        if (!c.has_ball) {
-            // Mocap has no ball: add one that meets the coach's racket.
-            float radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
-            BallSynth.add(c, table, radius, 0.5f * play.paddle_hand.held_paddle.thickness);
         }
         Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
                   + c.contact_times().Count + " strokes");
@@ -267,18 +263,19 @@ public class GhostCoach : MonoBehaviour {
         }
     }
 
-    // The coach stands beside the player in both phases and repeats the
-    // chosen stroke.  In phase 1 (watch) the coach hits its own ball and
-    // the robot rests; in phase 2 (play) the robot plays, the coach's ball
-    // is gone and the path is shown.  Nothing shows while recording.
+    // The coach stands on the table's centre line beside the player in both
+    // phases and swings the chosen stroke in the air.  In phase 1 (watch)
+    // the robot rests; in phase 2 (play) the robot plays and the path is
+    // shown where the player's racket should go.  Nothing shows while
+    // recording.
     void update_ghost() {
         bool live = (coach_clip != null && !recorder.recording);
-        coach_ghost.show_ball = (phase == Phase.Coach);
         if (live)
             coach_ghost.show(coach_clip);
         else
             coach_ghost.hide();
         set_robot(phase == Phase.Path);
+        path_guide.offset = coach_ghost.player_shift;
         if (live && phase == Phase.Path)
             path_guide.show(coach_clip);
         else
