@@ -227,7 +227,7 @@ public class CoachGhost : MonoBehaviour {
         neck_joint = (mocap ? clip.joint_names.IndexOf("Neck") : -1);
         if (mocap && limbs == null) {
             limbs = new Transform[n];
-            Material ghost = GhostVisuals.material("ghost");
+            Material ghost = GhostVisuals.body_material();
             for (int i = 0 ; i < n ; ++i)
                 limbs[i] = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost " + bones[i, 0] + " " + bones[i, 1],
                                                   ghost, ghost_root);
@@ -272,10 +272,10 @@ public class CoachGhost : MonoBehaviour {
     }
 
     void build_ghost() {
-        Material ghost = GhostVisuals.material("ghost");
+        Material ghost = GhostVisuals.body_material();
 
         ghost_root = new GameObject("CoachGhost visuals").transform;
-        ghost_paddle = GhostVisuals.copy_meshes(play.paddle_hand.held_paddle.transform, "ghost paddle", ghost, ghost_root);
+        ghost_paddle = GhostVisuals.copy_meshes(play.paddle_hand.held_paddle.transform, "ghost paddle", GhostVisuals.racket_material(), ghost_root);
         ghost_robot_paddle = GhostVisuals.copy_meshes(play.robot.paddle.transform, "ghost robot paddle", ghost, ghost_root);
         head = GhostVisuals.primitive(PrimitiveType.Sphere, "ghost head", ghost, ghost_root);
         head.localScale = 0.2f * Vector3.one;

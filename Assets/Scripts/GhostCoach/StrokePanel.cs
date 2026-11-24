@@ -40,6 +40,10 @@ public class StrokePanel : MonoBehaviour {
         public Rect rect;                  // Panel coordinates, meters.
         public bool enabled = true, selected = false, primary = false;
         public Renderer fill, border, glow;
+        public Color fill_now, border_now, fill_goal, border_goal;   // Colors ease toward the goal.
+        public Vector3 fill_size, border_size;
+        public float press;                // 1 when just pressed, then back to 0.
+        public bool painted;
         public TextMesh text, sub;         // The label and a small second text.
         public System.Action action;
     }
@@ -48,12 +52,11 @@ public class StrokePanel : MonoBehaviour {
     List<Item> items = new List<Item>();
     List<Item> stroke_items = new List<Item>();
     Item speed_item;
-    Renderer speed_fill;
+    Renderer speed_fill, pointer_glow;
     Rect speed_track;
     Transform root, dot;
     LineRenderer laser;
     Material source, laser_material, text_material;
-    Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
     TextMesh title;
 
     // Dark glass with one warm accent: the chosen stroke glows orange, like a
@@ -137,6 +140,9 @@ public class StrokePanel : MonoBehaviour {
     public bool click() {
         if (!open || hover < 0 || hover >= items.Count || !items[hover].enabled)
             return false;
+        items[hover].press = 1f;
+        haptic(0.03f, 0.4f);
+        GhostSounds.play("click", root.position);
         items[hover].action();
         return true;
     }
@@ -183,8 +189,14 @@ public class StrokePanel : MonoBehaviour {
                 fill = tile_selected;
                 border = tile_selected_border;
             }
-            item.fill.material.color = fill;
-            item.border.material.color = border;
+            item.fill_goal = fill;
+            item.border_goal = border;
+            if (!item.painted) {
+                item.painted = true;
+                item.fill_now = fill;
+                item.border_now = border;
+                apply(item);
+            }
             if (item.glow != null)
                 item.glow.enabled = (item.selected && item.enabled);
             item.text.color = text;
@@ -193,8 +205,30 @@ public class StrokePanel : MonoBehaviour {
         }
     }
 
+    void apply(Item item) {
+        item.fill.material.color = item.fill_now;
+        item.border.material.color = item.border_now;
+        float k = 1f - 0.05f * item.press;           // A pressed button sinks a little.
+        item.fill.transform.localScale = new Vector3(item.fill_size.x * k, item.fill_size.y * k, 1f);
+        item.border.transform.localScale = new Vector3(item.border_size.x * k, item.border_size.y * k, 1f);
+    }
+
+    // Colors ease to their new state, and a pressed button springs back.
+    void animate() {
+        float ease = 1f - Mathf.Exp(-18f * Time.deltaTime);
+        foreach (Item item in items) {
+            item.fill_now = Color.Lerp(item.fill_now, item.fill_goal, ease);
+            item.border_now = Color.Lerp(item.border_now, item.border_goal, ease);
+            item.press = Mathf.Max(0f, item.press - Time.deltaTime / 0.15f);
+            apply(item);
+        }
+    }
+
     void Update() {
-        if (!open || !hanging)
+        if (!hanging)
+            return;
+        animate();
+        if (!open)
             return;
         Ray r;
         if (!pointer(out r)) {
@@ -215,6 +249,9 @@ public class StrokePanel : MonoBehaviour {
                     break;
                 }
         }
+        pointer_glow.enabled = (found >= 0 && items[found].enabled);
+        pointer_glow.transform.position = end;
+        pointer_glow.transform.rotation = root.rotation;
         if (found != hover) {
             hover = found;
             paint();
@@ -270,42 +307,7 @@ public class StrokePanel : MonoBehaviour {
 
     // ---- building the panel
 
-    // ---- shapes: rounded rectangles drawn into small textures
-
-    const float pixels_per_meter = 900f;
-
-    // White rounded rectangle, w by h meters, with the given corner radius;
-    // soft > 0 makes a blurred glow of that reach, drawn into a texture that
-    // is `soft` larger than the box on every side.
-    Texture2D rounded(float w, float h, float radius, float soft) {
-        string key = Mathf.RoundToInt(w * 10000f) + "x" + Mathf.RoundToInt(h * 10000f) + "r" + Mathf.RoundToInt(radius * 10000f)
-                     + "s" + Mathf.RoundToInt(soft * 10000f);
-        Texture2D t;
-        if (textures.TryGetValue(key, out t))
-            return t;
-        int pw = Mathf.Max(4, Mathf.RoundToInt((w + 2f * soft) * pixels_per_meter));
-        int ph = Mathf.Max(4, Mathf.RoundToInt((h + 2f * soft) * pixels_per_meter));
-        t = new Texture2D(pw, ph, TextureFormat.RGBA32, false);
-        t.wrapMode = TextureWrapMode.Clamp;
-        t.filterMode = FilterMode.Bilinear;
-        float hx = 0.5f * w * pixels_per_meter, hy = 0.5f * h * pixels_per_meter, r = Mathf.Min(radius * pixels_per_meter, Mathf.Min(hx, hy));
-        float reach = soft * pixels_per_meter;
-        Color32[] pixels = new Color32[pw * ph];
-        for (int y = 0 ; y < ph ; ++y)
-            for (int x = 0 ; x < pw ; ++x) {
-                float px = Mathf.Abs(x + 0.5f - 0.5f * pw) - (hx - r);
-                float py = Mathf.Abs(y + 0.5f - 0.5f * ph) - (hy - r);
-                float d = Mathf.Sqrt(Mathf.Max(px, 0f) * Mathf.Max(px, 0f) + Mathf.Max(py, 0f) * Mathf.Max(py, 0f))
-                          + Mathf.Min(Mathf.Max(px, py), 0f) - r;          // Distance outside the edge, in pixels.
-                float a = (reach > 0f ? Mathf.Pow(Mathf.Clamp01(1f - d / reach), 2.2f) * (d <= 0f ? 1f : 1f)
-                                      : Mathf.Clamp01(0.5f - d / 1.2f));
-                pixels[y * pw + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(255f * a));
-            }
-        t.SetPixels32(pixels);
-        t.Apply(false, true);
-        textures[key] = t;
-        return t;
-    }
+    // ---- shapes: rounded rectangles drawn into small textures (GlassStyle)
 
     // A flat shape on the panel, centred at (x, y); negative z is toward the
     // player.  Each shape has its own material (a color, and a place in the
@@ -325,7 +327,7 @@ public class StrokePanel : MonoBehaviour {
     }
 
     Renderer rect_shape(string name, float x, float y, float w, float h, float radius, Color c, int queue, float z) {
-        return shape(name, rounded(w, h, radius, 0f), x, y, w, h, c, queue, z);
+        return shape(name, GlassStyle.rounded(w, h, radius, 0f), x, y, w, h, c, queue, z);
     }
 
     // ---- building the panel
@@ -358,7 +360,7 @@ public class StrokePanel : MonoBehaviour {
             float y = (i % 2 == 0 ? 0.232f : 0.087f);
             Item item = make_tile("stroke " + coach.strokes[i].id, new Rect(x - 0.1275f, y - 0.065f, 0.255f, 0.13f),
                                   coach.strokes[i].label, 0.0036f, () => coach.choose_stroke(index));
-            item.glow = shape("glow", rounded(0.255f, 0.13f, 0.024f, 0.03f), x, y, 0.255f + 0.06f, 0.13f + 0.06f,
+            item.glow = shape("glow", GlassStyle.rounded(0.255f, 0.13f, 0.024f, 0.03f), x, y, 0.255f + 0.06f, 0.13f + 0.06f,
                               new Color(accent.r, accent.g, accent.b, 0.55f), 3006, 0.003f);
             stroke_items.Add(item);
         }
@@ -379,9 +381,9 @@ public class StrokePanel : MonoBehaviour {
         speed_item.text.transform.localPosition = new Vector3(r.xMax - 0.016f, r.center.y + 0.021f, -0.004f);
         speed_item.sub.transform.localPosition = new Vector3(r.xMin + 0.016f, r.center.y + 0.021f, -0.004f);
         speed_track = new Rect(r.xMin + 0.016f, r.center.y - 0.027f, r.width - 0.032f, 0.012f);
-        shape("speed track", rounded(speed_track.width, speed_track.height, 0.006f, 0f), speed_track.center.x, speed_track.center.y,
+        shape("speed track", GlassStyle.rounded(speed_track.width, speed_track.height, 0.006f, 0f), speed_track.center.x, speed_track.center.y,
               speed_track.width, speed_track.height, new Color(0.30f, 0.33f, 0.40f), 3012, 0.0007f);
-        speed_fill = shape("speed fill", rounded(0.2f, speed_track.height, 0.006f, 0f), speed_track.center.x, speed_track.center.y,
+        speed_fill = shape("speed fill", GlassStyle.rounded(0.2f, speed_track.height, 0.006f, 0f), speed_track.center.x, speed_track.center.y,
                            0.1f, speed_track.height, Color.white, 3013, 0.0005f);
         Item close = make_tile("close", new Rect(0.02f, row - 0.055f, 0.25f, 0.11f), "Klar", 0.0042f, () => coach.close_panel());
         close.primary = true;
@@ -403,6 +405,10 @@ public class StrokePanel : MonoBehaviour {
         laser = GhostVisuals.line("panel laser", laser_material, 0.003f, transform);
         dot = GhostVisuals.primitive(PrimitiveType.Sphere, "panel laser dot", laser_material, transform);
         dot.localScale = 0.02f * Vector3.one;     // A 40 mm ball would be 0.04.
+        pointer_glow = GlassStyle.quad("laser glow", transform, source, GlassStyle.rounded(0.02f, 0.02f, 0.01f, 0.03f),
+                                       new Color(accent.r, accent.g, accent.b, 0.6f), 3029);
+        pointer_glow.transform.localScale = 0.08f * Vector3.one;
+        pointer_glow.enabled = false;
         root.gameObject.SetActive(false);
         laser.gameObject.SetActive(false);
         dot.gameObject.SetActive(false);
@@ -438,6 +444,8 @@ public class StrokePanel : MonoBehaviour {
         item.border = rect_shape(name + " border", rect.center.x, rect.center.y, rect.width + 2f * edge, rect.height + 2f * edge,
                                  radius + edge, tile_border, 3008, 0.002f);
         item.fill = rect_shape(name, rect.center.x, rect.center.y, rect.width, rect.height, radius, tile, 3010, 0.001f);
+        item.fill_size = new Vector3(rect.width, rect.height, 1f);
+        item.border_size = new Vector3(rect.width + 2f * edge, rect.height + 2f * edge, 1f);
         item.text = make_text(label, new Vector3(rect.center.x, rect.center.y, -0.004f), text_size);
         item.sub = make_text("", new Vector3(rect.center.x, rect.center.y - 0.03f, -0.004f), 0.0024f);
         items.Add(item);

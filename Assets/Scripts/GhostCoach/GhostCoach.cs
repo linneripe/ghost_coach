@@ -153,6 +153,8 @@ public class GhostCoach : MonoBehaviour {
         controllers.coach = coach;
     }
 
+    MessagePlate message_plate;
+
     void Start() {
         // A clip shipped with the app (mocap), else a made-up forehand drive
         // so both phases can be tried.  Only if recording is turned on in
@@ -164,6 +166,8 @@ public class GhostCoach : MonoBehaviour {
         GhostVisuals.make_racket_round(play.paddle_hand.held_paddle.transform);
         GhostVisuals.make_racket_round(play.robot.paddle.transform);
         hand_visuals.apply_hidden(ExperimentState.load().hide_hand_visuals);
+        if (play.billboard != null)
+            message_plate = MessagePlate.attach(play.billboard);
         // The clips shipped with the app, one per stroke.  If none of them is
         // one of the four strokes, the first clip is the coach (or a made-up
         // forehand drive), as before.  A coach recorded on this headset is
@@ -315,7 +319,10 @@ public class GhostCoach : MonoBehaviour {
         if (panel != null)
             panel.refresh();
         show_status();
-        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
+        // Two quick pulses, the second stronger: a choice, not just a touch.
+        play.paddle_hand.wand.haptic_pulses(2, 0.03f, 0.5f, 0.04f);
+        Camera head = (play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
+        GhostSounds.play("select", head != null ? head.transform.position : Vector3.zero);
         experiment.log_event("stroke_select", strokes[index].id);
     }
 
@@ -467,7 +474,10 @@ public class GhostCoach : MonoBehaviour {
     // long pulse means a good stroke, two short pulses mean look at the tip.
     public void stroke_scored(StrokeScore s) {
         Variant v = experiment.variant;
-        show_message(v.feedback_text ? "Score " + s.score + "\n" + s.tip : "");
+        // The plate's edge shows how close the stroke was: green, amber or orange.
+        show_message(v.feedback_text ? "Score " + s.score + "\n" + s.tip : "",
+                     s.score >= StrokeCompare.good_score ? new Color(0.45f, 0.88f, 0.62f)
+                     : (s.score >= 0.6f * StrokeCompare.good_score ? new Color(1f, 0.80f, 0.35f) : GlassStyle.accent));
         if (v.feedback_haptic) {
             if (s.score >= StrokeCompare.good_score)
                 play.free_hand.wand.haptic_pulses(1, 0.15f, 0.6f, 0f);
@@ -515,10 +525,12 @@ public class GhostCoach : MonoBehaviour {
         experiment.log_event("coach_speed", Mathf.RoundToInt(100f * s) + "%");
     }
 
-    void show_message(string text) {
+    void show_message(string text, Color? tint = null) {
         Debug.Log("GhostCoach: " + text.Replace("\n", " "));
         if (play.billboard != null)
             play.billboard.text = text;
+        if (message_plate != null)
+            message_plate.tint(tint);
     }
 
     // Input System messages (PlayControls.inputactions, PlayActions map).
