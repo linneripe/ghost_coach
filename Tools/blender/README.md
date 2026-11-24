@@ -6,7 +6,7 @@ for GhostCoach.  See the comment at the top of the script for options.
 ```
 /Applications/Blender.app/Contents/MacOS/Blender -b take.blend \
     --python Tools/blender/export_coach_clip.py -- \
-    Assets/Resources/GhostCoach/clips/coach_take0006.json --min-speed 2
+    Assets/Resources/GhostCoach/clips/forehand_drive.json --min-speed 2
 ```
 
 It writes one file in `Assets/Resources/GhostCoach/clips/`: `NAME.json`, the
