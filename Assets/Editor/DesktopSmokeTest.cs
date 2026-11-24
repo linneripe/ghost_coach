@@ -176,6 +176,12 @@ public static class DesktopSmokeTest {
                 }
             }
             check(GameObject.Find("ghost ball") == null, "the coach has no ball, it swings in the air");
+            // The coach and its path are only to look at: nothing in them can touch the ball.
+            GameObject coach_visuals = GameObject.Find("CoachGhost visuals");
+            GameObject path_visuals = GameObject.Find("PathGuide visuals");
+            int colliders = (coach_visuals != null ? coach_visuals.GetComponentsInChildren<Collider>(true).Length : -1)
+                          + (path_visuals != null ? path_visuals.GetComponentsInChildren<Collider>(true).Length : 0);
+            check(colliders == 0, "the coach and its path have no colliders, so they never hit the ball (" + colliders + ")");
             if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
                 check(gc.coach_ghost.showing, "mock coach shown when nothing is recorded");
                 GameObject mp = GameObject.Find("ghost paddle");
