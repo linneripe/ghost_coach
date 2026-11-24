@@ -331,7 +331,7 @@ public class GhostCoach : MonoBehaviour {
 
     // Name of a button in the hints: the controller button in the headset, the
     // key in desktop mode (mouse and keyboard).
-    static string button(string controller, string key) {
+    public static string button(string controller, string key) {
         return (DesktopRig.active != null ? key : controller);
     }
 

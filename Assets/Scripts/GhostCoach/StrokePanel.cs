@@ -7,8 +7,8 @@ using UnityEngine.InputSystem;
 // a stroke at once.  The left Y button (M on the keyboard) starts and stops
 // pointing: then a laser from the paddle hand controller points at a stroke
 // and the trigger chooses it (left click with the mouse on the desktop).  The
-// panel also has buttons for the coach's speed and for hiding or showing the
-// coach.
+// panel also has a button for the coach's speed, and lists what the buttons
+// on the controllers do.
 //
 // Built in code, with no event system: the laser is intersected with the
 // panel's plane and the buttons are rectangles on it.
@@ -44,10 +44,10 @@ public class StrokePanel : MonoBehaviour {
         public System.Action action;
     }
 
-    const float width = 0.62f, height = 0.66f;
+    const float width = 0.62f, height = 0.86f;
     List<Item> items = new List<Item>();
     List<Item> stroke_items = new List<Item>();
-    Item speed_item, coach_item;
+    Item speed_item;
     Transform root, dot;
     LineRenderer laser;
     Material frame_material, background_material, line_material, button_material, outline_material;
@@ -149,8 +149,6 @@ public class StrokePanel : MonoBehaviour {
         title.text = (open ? "Välj slag" : "Slag");
         speed_item.text.text = Mathf.RoundToInt(100f * coach.coach_ghost.speed) + " %";
         speed_item.sub.text = "hastighet";
-        coach_item.text.text = (coach.coach_visible ? "Dölj" : "Visa");
-        coach_item.sub.text = "coach";
         paint();
     }
 
@@ -281,9 +279,9 @@ public class StrokePanel : MonoBehaviour {
         flat("panel edge", frame_material, 0f, 0f, width, height, 0.0045f);
         flat("panel surface", background_material, 0f, 0f, width - 0.016f, height - 0.016f, 0.004f);
 
-        title = make_text("Välj slag", new Vector3(0f, 0.270f, -0.004f), 0.0046f);
+        title = make_text("Välj slag", new Vector3(0f, 0.370f, -0.004f), 0.0046f);
         title.fontStyle = FontStyle.Bold;
-        flat("title line", line_material, 0f, 0.222f, 0.52f, 0.003f, 0.0035f);
+        flat("title line", line_material, 0f, 0.322f, 0.52f, 0.003f, 0.0035f);
 
         // The four strokes in a grid: forehand on the paddle hand's side, backhand
         // on the other, the plain stroke over the drive, with the centre line between.
@@ -293,21 +291,39 @@ public class StrokePanel : MonoBehaviour {
             bool backhand = (i >= 2);
             float side = (backhand != left_handed ? -1f : 1f);    // Seen from the player.
             float x = side * 0.1425f;
-            float y = (i % 2 == 0 ? 0.125f : -0.045f);
+            float y = (i % 2 == 0 ? 0.225f : 0.055f);
             Item item = make_item("stroke " + coach.strokes[i].id, new Rect(x - 0.1225f, y - 0.07f, 0.245f, 0.14f),
                                   coach.strokes[i].label, 0.0036f, () => coach.choose_stroke(index));
             stroke_items.Add(item);
         }
-        flat("centre line", line_material, 0f, 0.040f, 0.003f, 0.34f, 0.0035f);
-        flat("net line", line_material, 0f, -0.140f, 0.52f, 0.003f, 0.0035f);
+        flat("centre line", line_material, 0f, 0.140f, 0.003f, 0.34f, 0.0035f);
+        flat("net line", line_material, 0f, -0.040f, 0.52f, 0.003f, 0.0035f);
 
-        // Speed, show or hide the coach, done.
-        float row = -0.230f;
-        speed_item = make_item("speed", new Rect(-0.27f, row - 0.05f, 0.17f, 0.10f), "100 %", 0.0042f,
+        // Speed and done.
+        float row = -0.110f;
+        speed_item = make_item("speed", new Rect(-0.27f, row - 0.045f, 0.25f, 0.09f), "100 %", 0.0042f,
                                () => coach.change_speed());
-        coach_item = make_item("coach", new Rect(-0.085f, row - 0.05f, 0.17f, 0.10f), "Dölj", 0.0042f,
-                               () => coach.toggle_coach());
-        make_item("close", new Rect(0.10f, row - 0.05f, 0.17f, 0.10f), "Klar", 0.0042f, () => coach.close_panel());
+        make_item("close", new Rect(0.02f, row - 0.045f, 0.25f, 0.09f), "Klar", 0.0042f, () => coach.close_panel());
+
+        // What the buttons on the controllers do, and how to get the panel back.
+        flat("help line", line_material, 0f, -0.190f, 0.52f, 0.003f, 0.0035f);
+        string[] lines = (DesktopRig.active != null
+            ? new string[] { "Tangentbord", "P: titta eller spela", "K: dölj eller visa coachen",
+                             "L: coachens hastighet", "F: bollar på eller av",
+                             "Mus", "M: peka på menyn för att byta slag" }
+            : new string[] { "Racket-handen", "A: titta eller spela", "B: dölj eller visa coachen",
+                             "Spak (tryck): coachens hastighet", "Avtryckare: bollar på eller av",
+                             "Andra handen", "Y: peka på menyn för att byta slag" });
+        for (int i = 0 ; i < lines.Length ; ++i) {
+            bool heading = (i == 0 || i == 5);
+            TextMesh t = make_text(lines[i], new Vector3(-0.27f, -0.215f - 0.0295f * i, -0.004f), 0.0029f);
+            t.anchor = TextAnchor.MiddleLeft;
+            t.alignment = TextAlignment.Left;
+            if (heading) {
+                t.fontStyle = FontStyle.Bold;
+                t.color = new Color(0.60f, 0.80f, 0.88f);
+            }
+        }
 
         laser = GhostVisuals.line("panel laser", laser_material, 0.003f, transform);
         dot = GhostVisuals.primitive(PrimitiveType.Sphere, "panel laser dot", laser_material, transform);

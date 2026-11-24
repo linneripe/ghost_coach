@@ -599,14 +599,13 @@ public static class DesktopSmokeTest {
             coach.OnGhostPanelClick();
             check(coach.panel_open && coach.coach_ghost.speed != speed_before,
                   "the speed button in the panel changes the coach's speed to " + coach.coach_ghost.speed);
-            panel_ray(coach, "coach");
+            panel_ray(coach, "stroke backhand_drive");
             next_phase();
         }
         else if (phase == 24 && t > 0.2f) {
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
-            coach.OnGhostPanelClick();
-            check(coach.panel_open && !coach.coach_visible && !coach.coach_ghost.showing,
-                  "the coach button hides the coach");
+            coach.toggle_coach();
+            check(!coach.coach_visible && !coach.coach_ghost.showing, "B hides the coach");
             coach.toggle_coach();
             check(coach.coach_visible && coach.coach_ghost.showing, "and brings it back");
             panel_ray(coach, "stroke backhand_drive");
