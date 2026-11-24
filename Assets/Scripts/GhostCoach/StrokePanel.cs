@@ -38,8 +38,9 @@ public class StrokePanel : MonoBehaviour {
         public Rect rect;                  // Panel coordinates, meters.
         public bool enabled = true, selected = false;
         public Transform quad;
-        public MeshRenderer quad_renderer;
-        public TextMesh text;
+        public MeshRenderer quad_renderer, outline_renderer;
+        public TextMesh text, sub;         // The label and a small line under it.
+        public float text_y;               // Where the label sits when there is no small line.
         public System.Action action;
     }
 
@@ -49,8 +50,18 @@ public class StrokePanel : MonoBehaviour {
     Item speed_item, coach_item;
     Transform root, dot;
     LineRenderer laser;
-    Material background_material, button_material, hover_material, selected_material, disabled_material;
+    Material frame_material, background_material, line_material, button_material, outline_material;
+    Material hover_material, selected_material, disabled_material;
     Material laser_material, text_material;
+
+    // The panel is a little table-tennis table: dark blue playing surface, a
+    // white painted edge line, a white centre line between forehand and
+    // backhand, and the orange ball as the pointer and the choice.
+    static readonly Color table_blue = new Color(0.04f, 0.17f, 0.24f);
+    static readonly Color paint_white = new Color(0.95f, 0.95f, 0.90f);
+    static readonly Color ball_orange = new Color(1f, 0.47f, 0.08f);
+    static readonly Color ink = new Color(0.04f, 0.10f, 0.14f);
+    static readonly Color muted = new Color(0.45f, 0.58f, 0.63f);
     TextMesh title;
 
     public IEnumerable<string> button_names {
@@ -131,11 +142,15 @@ public class StrokePanel : MonoBehaviour {
             bool available = (i < coach.strokes.Count && coach.strokes[i].available);
             item.enabled = available;
             item.selected = (i == coach.stroke_choice);
-            item.text.text = coach.strokes[i].label + (available ? "" : "\n(data saknas)");
+            item.text.text = coach.strokes[i].label;
+            item.sub.text = (available ? "" : "ingen tagning ännu");
+            item.text.transform.localPosition = new Vector3(item.rect.center.x, item.rect.center.y + (available ? 0f : 0.014f), -0.004f);
         }
         title.text = (open ? "Välj slag" : "Slag");
-        speed_item.text.text = "Hastighet\n" + Mathf.RoundToInt(100f * coach.coach_ghost.speed) + " %";
-        coach_item.text.text = (coach.coach_visible ? "Dölj\ncoach" : "Visa\ncoach");
+        speed_item.text.text = Mathf.RoundToInt(100f * coach.coach_ghost.speed) + " %";
+        speed_item.sub.text = "hastighet";
+        coach_item.text.text = (coach.coach_visible ? "Dölj" : "Visa");
+        coach_item.sub.text = "coach";
         paint();
     }
 
@@ -143,14 +158,21 @@ public class StrokePanel : MonoBehaviour {
         for (int i = 0 ; i < items.Count ; ++i) {
             Item item = items[i];
             Material m = button_material;
-            if (!item.enabled)
+            Color text = Color.white;
+            if (!item.enabled) {
                 m = disabled_material;
-            else if (i == hover)
+                text = muted;
+            } else if (i == hover) {
                 m = hover_material;
-            else if (item.selected)
+                text = ink;
+            } else if (item.selected) {
                 m = selected_material;
+                text = ink;
+            }
             item.quad_renderer.sharedMaterial = m;
-            item.text.color = (item.enabled ? Color.white : new Color(0.7f, 0.7f, 0.7f));
+            item.outline_renderer.enabled = item.enabled;
+            item.text.color = text;
+            item.sub.color = text;
         }
     }
 
@@ -244,45 +266,63 @@ public class StrokePanel : MonoBehaviour {
 
     void build() {
         Material ghost = GhostVisuals.material("ghost");
-        background_material = colored(ghost, new Color(0.06f, 0.09f, 0.16f, 0.97f), 3000);
-        button_material = colored(ghost, new Color(0.22f, 0.28f, 0.42f, 1f), 3010);
-        hover_material = colored(ghost, new Color(0.95f, 0.65f, 0.1f, 1f), 3010);
-        selected_material = colored(ghost, new Color(0.0f, 0.62f, 0.72f, 1f), 3010);
-        disabled_material = colored(ghost, new Color(0.14f, 0.14f, 0.16f, 1f), 3010);
-        laser_material = colored(ghost, new Color(1f, 0.85f, 0.3f, 1f), 3030);
+        frame_material = colored(ghost, paint_white, 3000);
+        background_material = colored(ghost, table_blue, 3001);
+        line_material = colored(ghost, new Color(paint_white.r, paint_white.g, paint_white.b, 0.55f), 3004);
+        outline_material = colored(ghost, new Color(0.40f, 0.60f, 0.68f, 1f), 3008);
+        button_material = colored(ghost, new Color(0.08f, 0.30f, 0.40f, 1f), 3010);
+        hover_material = colored(ghost, paint_white, 3010);
+        selected_material = colored(ghost, ball_orange, 3010);
+        disabled_material = colored(ghost, new Color(0.05f, 0.14f, 0.19f, 1f), 3010);
+        laser_material = colored(ghost, ball_orange, 3030);
 
         root = new GameObject("StrokePanel").transform;
-        Transform background = GhostVisuals.primitive(PrimitiveType.Quad, "panel background", background_material, root);
-        background.localPosition = new Vector3(0f, 0f, 0.004f);
-        background.localScale = new Vector3(width, height, 1f);
+        // The white edge line, then the surface inside it.
+        flat("panel edge", frame_material, 0f, 0f, width, height, 0.0045f);
+        flat("panel surface", background_material, 0f, 0f, width - 0.016f, height - 0.016f, 0.004f);
 
-        title = make_text("Välj slag", new Vector3(0f, 0.285f, -0.004f), 0.0042f);
+        title = make_text("Välj slag", new Vector3(0f, 0.270f, -0.004f), 0.0046f);
         title.fontStyle = FontStyle.Bold;
+        flat("title line", line_material, 0f, 0.222f, 0.52f, 0.003f, 0.0035f);
 
-        // Four strokes, one button each.
-        float y = 0.175f;
+        // The four strokes in a grid: forehand on the paddle hand's side, backhand
+        // on the other, the plain stroke over the drive, with the centre line between.
+        bool left_handed = (play.paddle_hand != null && play.paddle_hand.wand.left);
         for (int i = 0 ; i < coach.strokes.Count ; ++i) {
             int index = i;
-            Item item = make_item("stroke " + coach.strokes[i].id, new Rect(-0.26f, y - 0.04f, 0.52f, 0.08f),
-                                  coach.strokes[i].label, 0.0042f, () => coach.choose_stroke(index));
+            bool backhand = (i >= 2);
+            float side = (backhand != left_handed ? -1f : 1f);    // Seen from the player.
+            float x = side * 0.1425f;
+            float y = (i % 2 == 0 ? 0.125f : -0.045f);
+            Item item = make_item("stroke " + coach.strokes[i].id, new Rect(x - 0.1225f, y - 0.07f, 0.245f, 0.14f),
+                                  coach.strokes[i].label, 0.0036f, () => coach.choose_stroke(index));
             stroke_items.Add(item);
-            y -= 0.10f;
         }
+        flat("centre line", line_material, 0f, 0.040f, 0.003f, 0.34f, 0.0035f);
+        flat("net line", line_material, 0f, -0.140f, 0.52f, 0.003f, 0.0035f);
 
-        // Speed, show or hide the coach, close.
-        float row = -0.245f;
-        speed_item = make_item("speed", new Rect(-0.29f, row - 0.045f, 0.18f, 0.09f), "Hastighet", 0.0031f,
+        // Speed, show or hide the coach, done.
+        float row = -0.230f;
+        speed_item = make_item("speed", new Rect(-0.27f, row - 0.05f, 0.17f, 0.10f), "100 %", 0.0042f,
                                () => coach.change_speed());
-        coach_item = make_item("coach", new Rect(-0.09f, row - 0.045f, 0.18f, 0.09f), "Dölj coach", 0.0031f,
+        coach_item = make_item("coach", new Rect(-0.085f, row - 0.05f, 0.17f, 0.10f), "Dölj", 0.0042f,
                                () => coach.toggle_coach());
-        make_item("close", new Rect(0.11f, row - 0.045f, 0.18f, 0.09f), "Klar", 0.0031f, () => coach.close_panel());
+        make_item("close", new Rect(0.10f, row - 0.05f, 0.17f, 0.10f), "Klar", 0.0042f, () => coach.close_panel());
 
-        laser = GhostVisuals.line("panel laser", laser_material, 0.004f, transform);
+        laser = GhostVisuals.line("panel laser", laser_material, 0.003f, transform);
         dot = GhostVisuals.primitive(PrimitiveType.Sphere, "panel laser dot", laser_material, transform);
-        dot.localScale = 0.015f * Vector3.one;
+        dot.localScale = 0.02f * Vector3.one;     // A 40 mm ball would be 0.04.
         root.gameObject.SetActive(false);
         laser.gameObject.SetActive(false);
         dot.gameObject.SetActive(false);
+    }
+
+    // A flat rectangle on the panel, centred at (x, y), z toward the player is negative.
+    Transform flat(string name, Material m, float x, float y, float w, float h, float z) {
+        Transform t = GhostVisuals.primitive(PrimitiveType.Quad, name, m, root);
+        t.localPosition = new Vector3(x, y, z);
+        t.localScale = new Vector3(w, h, 1f);
+        return t;
     }
 
     Item make_item(string name, Rect rect, string label, float text_size, System.Action action) {
@@ -290,12 +330,16 @@ public class StrokePanel : MonoBehaviour {
         item.name = name;
         item.rect = rect;
         item.action = action;
-        Transform quad = GhostVisuals.primitive(PrimitiveType.Quad, name, button_material, root);
-        quad.localPosition = new Vector3(rect.center.x, rect.center.y, 0.001f);
-        quad.localScale = new Vector3(rect.width, rect.height, 1f);
+        const float edge = 0.004f;            // Thin light outline around each button.
+        Transform outline = flat(name + " outline", outline_material, rect.center.x, rect.center.y,
+                                 rect.width + 2f * edge, rect.height + 2f * edge, 0.002f);
+        item.outline_renderer = outline.GetComponent<MeshRenderer>();
+        Transform quad = flat(name, button_material, rect.center.x, rect.center.y, rect.width, rect.height, 0.001f);
         item.quad = quad;
         item.quad_renderer = quad.GetComponent<MeshRenderer>();
-        item.text = make_text(label, new Vector3(rect.center.x, rect.center.y, -0.004f), text_size);
+        item.text_y = rect.center.y + 0.012f;
+        item.text = make_text(label, new Vector3(rect.center.x, item.text_y, -0.004f), text_size);
+        item.sub = make_text("", new Vector3(rect.center.x, rect.center.y - 0.030f, -0.004f), 0.0024f);
         items.Add(item);
         return item;
     }
