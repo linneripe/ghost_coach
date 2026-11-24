@@ -27,7 +27,9 @@ public static class DesktopSmokeTest {
     static List<bool> paddle_states = new List<bool>();
     static Ball fed_ball_1;
     static Vector3 fed_spawn_1, fed_vel_1, fed_near_bounce_1;
-    static bool fed_far_bounced, fed_near_bounced;
+    static int fed_bounces;
+    static float fed_prev_y, fed_prev_z, fed_prev_vy, fed_net_y, fed_hit_y_1, fed_hit_y_2;
+    static bool fed_net_crossed, fed_hit_1, fed_hit_2, fed_bounced_far_side;
     static bool saved_options_enabled;
     static EnterPlayModeOptions saved_options;
 
@@ -450,8 +452,8 @@ public static class DesktopSmokeTest {
             check(coach.ball_feeder != null, "BallFeeder component created");
             ButtonDedup.log.Clear();
             fake_controllers.set(false, Btn.Trigger, true);
-            fed_far_bounced = false;
-            fed_near_bounced = false;
+            fed_bounces = 0;
+            fed_net_crossed = fed_hit_1 = fed_hit_2 = fed_bounced_far_side = false;
             next_phase();
         }
         else if (phase == 17) {
@@ -473,16 +475,40 @@ public static class DesktopSmokeTest {
             if (fed_ball_1 != null) {
                 Vector3 bp = fed_ball_1.transform.position;
                 Vector3 bv = fed_ball_1.motion.velocity;
-                if (!fed_far_bounced && bp.z > 0f && bv.y > 0f && bp.y <= coach.table.height + 0.10f)
-                    fed_far_bounced = true;
-                if (fed_far_bounced && !fed_near_bounced && bp.z < 0f && bv.y > 0f && bp.y <= coach.table.height + 0.10f) {
-                    fed_near_bounced = true;
+                float surface = coach.table.height;
+                // A bounce on the table: moving down, then up, near the surface.
+                if (fed_prev_vy < 0f && bv.y > 0f && bp.y <= surface + 0.10f && Mathf.Abs(bp.x) < 0.8f && Mathf.Abs(bp.z) < 1.4f) {
+                    fed_bounces += 1;
                     fed_near_bounce_1 = bp;
+                    if (bp.z > 0f)
+                        fed_bounced_far_side = true;
                 }
+                if (!fed_net_crossed && fed_prev_z > 0f && bp.z <= 0f) {
+                    fed_net_crossed = true;
+                    fed_net_y = bp.y - surface;
+                }
+                if (!fed_hit_1 && fed_prev_z > -1.5f && bp.z <= -1.5f) {
+                    fed_hit_1 = true;
+                    fed_hit_y_1 = bp.y - surface;
+                }
+                if (!fed_hit_2 && fed_prev_z > -1.9f && bp.z <= -1.9f) {
+                    fed_hit_2 = true;
+                    fed_hit_y_2 = bp.y - surface;
+                }
+                fed_prev_y = bp.y;
+                fed_prev_z = bp.z;
+                fed_prev_vy = bv.y;
             }
             if (t > 1.5f) {
-                check(fed_far_bounced && fed_near_bounced,
-                      "fed ball bounces on far side then near side (" + fed_near_bounce_1.ToString("F2") + ")");
+                check(fed_bounces == 1 && !fed_bounced_far_side && fed_near_bounce_1.z < 0f,
+                      "fed ball bounces once on the table, on the player's half (" + fed_bounces + " bounces, at "
+                      + fed_near_bounce_1.ToString("F2") + ")");
+                check(fed_net_crossed && fed_net_y > 0.1525f + 0.02f,
+                      "fed ball clears the net, " + fed_net_y.ToString("F2") + " m above the table");
+                check(fed_hit_1 && fed_hit_y_1 > 0.10f && fed_hit_y_1 < 0.50f,
+                      "fed ball is at a good height past the end line, " + fed_hit_y_1.ToString("F2") + " m above the table at z -1.5");
+                check(fed_hit_2 && fed_hit_y_2 > 0.05f && fed_hit_y_2 < 0.55f,
+                      "fed ball is still hittable further back, " + fed_hit_y_2.ToString("F2") + " m above the table at z -1.9");
                 next_phase();
             }
         }

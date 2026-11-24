@@ -1,22 +1,23 @@
 using UnityEngine;
 
-// Standalone ball-feeding game mode: spawns a ball on the far side of the
-// table every `feed_interval` seconds and "serves" it (bouncing on the far
-// side, then over the net to the same spot on the player's side) with little
-// spin.  Runs on a fixed timer regardless of whether or how the player
-// returns the ball.
+// Ball-feeding game mode: spawns a ball above the far end of the table every
+// `feed_interval` seconds and sends it over the net so it bounces once on the
+// player's half, in line with the player, and then rises to a height where it
+// is easy to hit, with little spin.  Runs on a fixed timer regardless of
+// whether or how the player returns the ball.
 public class BallFeeder : MonoBehaviour {
 
     public Play play;
     public Table table;
 
     public float feed_interval = 3.0f;     // Seconds between feeds.
-    public float feed_speed = 4.2f;        // Horizontal speed (m/s).
+    public float feed_speed = 5.0f;        // Horizontal speed (m/s).
     public float feed_topspin = 1.0f;      // Mild topspin (m/s at ball surface).
 
     // Coordinates relative to the full table center (at the net; y relative to top_y).
     public Vector3 spawn_offset = new Vector3(0.0f, 0.35f, 1.45f);
-    public Vector3 far_bounce_offset = new Vector3(0.18f, 0.0f, 0.65f);
+    public float bounce_z = -1.05f;        // Where the ball lands on the player's half, m from the net.
+    public float bounce_x_limit = 0.55f;   // Landing spot stays this far from the table's side edges.
 
     public bool feeding { get; private set; }
     public int fed_count { get; private set; }
@@ -97,12 +98,14 @@ public class BallFeeder : MonoBehaviour {
                                             new Vector3(center.x + spawn_offset.x,
                                                         top_y + spawn_offset.y,
                                                         center.z + spawn_offset.z));
-        Vector3 far_bounce = TableSpace.to_world(table.transform,
-                                                 new Vector3(center.x + far_bounce_offset.x,
-                                                             top_y + b.radius + far_bounce_offset.y,
-                                                             center.z + far_bounce_offset.z));
+        // Land in line with the player, so the ball comes to where they stand.
+        float bounce_x = Mathf.Clamp(player_x() - center.x, -bounce_x_limit, bounce_x_limit);
+        Vector3 bounce = TableSpace.to_world(table.transform,
+                                             new Vector3(center.x + bounce_x,
+                                                         top_y + b.radius,
+                                                         center.z + bounce_z));
 
-        Vector3 line = far_bounce - spawn;
+        Vector3 line = bounce - spawn;
         Vector3 plane_move = new Vector3(line.x, 0f, line.z);
         float range = plane_move.magnitude;
         Vector3 velocity;
@@ -125,6 +128,13 @@ public class BallFeeder : MonoBehaviour {
         play.start_ball_feed(b);
         fed_count += 1;
         return b;
+    }
+
+    // The player's sideways place in table coordinates: the head if the
+    // headset or desktop view is there, else the table's centre line.
+    float player_x() {
+        Camera head = (play != null && play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
+        return (head != null ? TableSpace.to_table(table.transform, head.transform.position).x : 0f);
     }
 
     void show_message(string text) {
