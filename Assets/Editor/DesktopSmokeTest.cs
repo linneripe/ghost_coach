@@ -143,6 +143,22 @@ public static class DesktopSmokeTest {
                     Vector3 neck = gc.coach_ghost.drawn(mf.joints[names.IndexOf("Neck")]);
                     check(torso != null && (torso.transform.position - 0.5f * (hips + neck)).magnitude < 0.03f,
                           "the torso is between the hips and neck joints");
+                    Table table_component = Object.FindFirstObjectByType<Table>();
+                    float top_y;
+                    // Averaged over the repeated stroke, as the coach is placed.
+                    float centre_x = 0f;
+                    int samples = 0;
+                    for (float ts = Mathf.Max(0f, t_contact - 1.2f); ts <= t_contact + 0.8f; ts += 0.05f) {
+                        Vector3 hp = gc.coach_ghost.drawn(gc.coach_clip.sample(ts).joints[names.IndexOf("Hips")]);
+                        centre_x += TableSpace.to_table(table_component.transform, hp).x;
+                        samples += 1;
+                    }
+                    centre_x /= samples;
+                    check(Mathf.Abs(centre_x - TableSpace.center(table_component, out top_y).x) < 0.05f,
+                          "the coach stands on the table's centre line, x " + centre_x.ToString("F2") + " m");
+                    Vector3 player = TableSpace.to_table(table_component.transform, gc.coach_ghost.player_spot);
+                    check(Mathf.Abs(player.x - centre_x) > 0.5f && Mathf.Abs(player.x - centre_x) < 1.5f,
+                          "the player's place is beside the coach, " + (player.x - centre_x).ToString("F2") + " m");
                     float head_top = gc.coach_ghost.drawn(mf.joints[names.IndexOf("HeadTop_End")]).y;
                     float real_top = mf.joints[names.IndexOf("HeadTop_End")].y;
                     check(head_top > real_top * 1.05f && head_top < real_top * 1.15f,
@@ -157,7 +173,7 @@ public static class DesktopSmokeTest {
                               "Logs/smoke_coach_body2.png");
                 }
             }
-            check(gc != null && gc.coach_clip != null && gc.coach_clip.has_ball, "coach clip has a ball, recorded or made up");
+            check(GameObject.Find("ghost ball") == null, "the coach has no ball, it swings in the air");
             if (gc != null && gc.coach_clip != null && gc.coach_clip.source == "mock") {
                 check(gc.coach_ghost.showing, "mock coach shown when nothing is recorded");
                 GameObject mp = GameObject.Find("ghost paddle");
@@ -270,13 +286,13 @@ public static class DesktopSmokeTest {
             // Remove the test clip so it is not loaded as the coach later.
             System.IO.File.Delete(System.IO.Path.Combine(MotionClip.clips_directory(), c.name + ".json"));
 
-            check(coach.coach_ghost.showing && !coach.coach_ghost.show_ball && play.robot_active && coach.path_guide.showing,
-                  "play phase: coach stays beside, no coach ball, robot plays, path shown");
+            check(coach.coach_ghost.showing && play.robot_active && coach.path_guide.showing,
+                  "play phase: coach stays beside, robot plays, path shown");
             coach.OnGhostTogglePhase();
             check(coach.phase == GhostCoach.Phase.Coach && coach.coach_ghost.showing,
                   "coach ghost shown in coach phase");
-            check(!play.robot_active && coach.coach_ghost.show_ball && !coach.path_guide.showing,
-                  "watch phase: robot rests, coach hits its ball, no path");
+            check(!play.robot_active && !coach.path_guide.showing,
+                  "watch phase: robot rests, no path");
             int stroke_count = coach.coach_clip.strokes().Count;
             if (stroke_count >= 2) {
                 int stroke_before = coach.stroke;

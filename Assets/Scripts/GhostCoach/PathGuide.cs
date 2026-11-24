@@ -15,6 +15,9 @@ public class PathGuide : MonoBehaviour {
     public float path_follow = 0.35f;       // Seconds of follow-through drawn after contact.
     public float history_seconds = 2f;      // Player motion kept for scoring.
     public int stroke = 0;                  // Which stroke of the clip is the reference.
+    // Table coordinates: from where the coach stood when recording to where
+    // the player stands.  The coach's path is drawn there.
+    public Vector3 offset = Vector3.zero;
 
     public System.Action<StrokeScore> stroke_scored;
     public StrokeScore last_score;
@@ -94,25 +97,25 @@ public class PathGuide : MonoBehaviour {
     }
 
     void draw_coach_path() {
-        set_path(coach_line, coach, coach_contact);
+        set_path(coach_line, coach, coach_contact, offset);
         MotionFrame f = coach.sample(coach_contact);
-        contact_paddle.SetPositionAndRotation(TableSpace.to_world(table, f.paddle_position),
+        contact_paddle.SetPositionAndRotation(TableSpace.to_world(table, f.paddle_position + offset),
                                               TableSpace.to_world(table, f.paddle_rotation));
         // Player stands where the coach stood.
         Vector3 forward, right;
         Vector3 stance = GhostVisuals.coach_stance(coach, coach_contact - path_lead,
                                                    coach_contact + path_follow, out forward, out right);
-        GhostVisuals.place_on_floor(stand_marker, table, stance);
+        GhostVisuals.place_on_floor(stand_marker, table, stance + offset);
     }
 
-    void set_path(LineRenderer line, MotionClip clip, float contact) {
+    void set_path(LineRenderer line, MotionClip clip, float contact, Vector3 shift = default(Vector3)) {
         float start = Mathf.Max(0f, contact - path_lead);
         float end = Mathf.Min(clip.duration, contact + path_follow);
         int n = Mathf.Max(2, Mathf.CeilToInt((end - start) / 0.01f) + 1);
         line.positionCount = n;
         for (int i = 0 ; i < n ; ++i) {
             float t = start + (end - start) * i / (n - 1);
-            line.SetPosition(i, TableSpace.to_world(table, clip.sample(t).paddle_position));
+            line.SetPosition(i, TableSpace.to_world(table, clip.sample(t).paddle_position + shift));
         }
     }
 

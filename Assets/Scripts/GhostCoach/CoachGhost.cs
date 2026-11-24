@@ -1,11 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Phase 1: replays a recorded coach clip as a semi-transparent ghost at the
-// table, where the coach stood, so it is in the hitting position.  The
-// recorded ball and robot paddle are replayed too, so the coach always
-// meets the ball.  A marker on the floor shows the player where to stand:
-// beside the coach, facing the same way.
+// Replays a recorded coach clip as a semi-transparent ghost at the table.
+// The coach stands on the table's centre line and swings in the air (there
+// is no ball).  The player stands beside the coach, facing the same way.
 //
 // The ghost body is a simple figure: capsules between the recorded joints
 // when the clip has them (mocap), else a stick figure (head, torso, paddle
@@ -24,12 +22,12 @@ public class CoachGhost : MonoBehaviour {
     public bool stand_on_paddle_side = false;
     public float stand_behind = 0f;         // Meters behind the coach.
     public int stroke = 0;                  // Which stroke of the clip is repeated.
-    // The coach always stands beside the player, who takes the place where the
-    // coach stood when recording, so the paddle path in phase 2 is right.  The
-    // coach is drawn a little larger than life, scaled around its own feet.
+    // The coach is drawn on the table's centre line, a little larger than life,
+    // scaled around its own feet.  The player stands beside it, so the paddle
+    // path in phase 2 is moved by player_shift to where the player's racket goes.
     public float coach_scale = 1.1f;
-    public bool show_ball = true;           // The coach's ball, off while the player plays.
-    Vector3 shift = Vector3.zero;           // Table coordinates: from recorded place to beside the player.
+    Vector3 shift = Vector3.zero;           // Table coordinates: from recorded place to the centre line.
+    public Vector3 player_shift { get; private set; }   // From recorded place to the player's place.
     Vector3 scale_origin = Vector3.zero;    // Table coordinates, on the floor at the coach's feet.
     Transform frame_transform;
 
@@ -37,7 +35,7 @@ public class CoachGhost : MonoBehaviour {
     float playback_time, loop_start, loop_end;
 
     Transform ghost_root, ghost_paddle, ghost_robot_paddle;
-    Transform head, torso, arm, ball, stand_marker;
+    Transform head, torso, arm, stand_marker;
 
     // Body drawn from recorded joints when the clip has them (mocap).
     // Pairs of Mixamo joint names and the limb width in meters.
@@ -67,7 +65,11 @@ public class CoachGhost : MonoBehaviour {
         get { return head.position; }
     }
 
-    // Where the player should stand to watch, on the floor, world coordinates.
+    public bool has_spot {
+        get { return stand_marker != null; }
+    }
+
+    // Where the player should stand, beside the coach, on the floor, world coordinates.
     public Vector3 player_spot {
         get { return stand_marker.position; }
     }
@@ -179,9 +181,6 @@ public class CoachGhost : MonoBehaviour {
             Vector3 hand = paddle_position - 0.12f * (paddle_rotation * Vector3.up);
             place_limb(arm, shoulder, hand, 0.08f);
         }
-
-        ball.gameObject.SetActive(clip.has_ball && f.ball_in_play && show_ball);
-        ball.position = drawn(f.ball_position);
     }
 
     // Stretch a unit-height primitive between two points.
@@ -230,19 +229,37 @@ public class CoachGhost : MonoBehaviour {
     void place_stand_marker() {
         Vector3 forward, right;
         Vector3 coach = GhostVisuals.coach_stance(clip, loop_start, loop_end, out forward, out right);
+        // Stand by the hips, which sway less than the head, when the clip has them.
+        int hips = (clip.joint_names != null ? clip.joint_names.IndexOf("Hips") : -1);
+        if (hips >= 0) {
+            Vector3 sum = Vector3.zero;
+            int n = 0;
+            foreach (MotionFrame f in clip.frames)
+                if (f.t >= loop_start && f.t <= loop_end && f.joints != null) {
+                    sum += f.joints[hips];
+                    n += 1;
+                }
+            if (n > 0) {
+                coach.x = sum.x / n;
+                coach.z = sum.z / n;
+            }
+        }
         float paddle_side = (clip.left_handed ? -1f : 1f);
         float side = (stand_on_paddle_side ? paddle_side : -paddle_side);
-        // Where the player used to watch from; the coach now stands there
-        // and the player stands at the recorded place.
+        // The coach moves sideways onto the table's centre line, and the
+        // player stands beside it.
+        Table table_component = table.GetComponent<Table>();
+        float top_y;
+        float centre_x = (table_component != null ? TableSpace.center(table_component, out top_y).x : 0f);
         Vector3 beside = stand_offset * side * right - stand_behind * forward;
-        shift = new Vector3(-beside.x, 0f, -beside.z);
+        shift = new Vector3(centre_x - coach.x, 0f, 0f);
+        player_shift = shift + new Vector3(beside.x, 0f, beside.z);
         scale_origin = new Vector3(coach.x, 0f, coach.z);
-        GhostVisuals.place_on_floor(stand_marker, table, coach);
+        GhostVisuals.place_on_floor(stand_marker, table, new Vector3(coach.x, 0f, coach.z) + player_shift);
     }
 
     void build_ghost() {
         Material ghost = GhostVisuals.material("ghost");
-        Material ghost_ball = GhostVisuals.material("ghost_ball");
 
         ghost_root = new GameObject("CoachGhost visuals").transform;
         ghost_paddle = GhostVisuals.copy_meshes(play.paddle_hand.held_paddle.transform, "ghost paddle", ghost, ghost_root);
@@ -251,9 +268,6 @@ public class CoachGhost : MonoBehaviour {
         head.localScale = 0.2f * Vector3.one;
         torso = GhostVisuals.primitive(PrimitiveType.Capsule, "ghost torso", ghost, ghost_root);
         arm = GhostVisuals.primitive(PrimitiveType.Cylinder, "ghost arm", ghost, ghost_root);
-        ball = GhostVisuals.primitive(PrimitiveType.Sphere, "ghost ball", ghost_ball, ghost_root);
-        float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
-        ball.localScale = 2f * ball_radius * Vector3.one;
         stand_marker = GhostVisuals.stand_marker("stand here marker", ghost_root);
     }
 }
