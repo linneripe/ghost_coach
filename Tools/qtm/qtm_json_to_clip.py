@@ -42,6 +42,7 @@ OUTPUT_RATE = 120.0
 MIN_STROKE_GAP = 0.5         # Seconds between strokes.
 RACKET_FROM_HAND = 0.12      # Meters from the hand along the forearm to the racket centre.
 HEAD_TOP_ABOVE_HEAD = 0.12   # Meters from the head joint to the top of the head.
+TABLE_HALF_LENGTH = 1.37     # Meters from player end line to middle of table.
 
 JOINTS = ["Hips", "Spine2", "Neck", "Head", "HeadTop_End",
           "LeftArm", "LeftForeArm", "LeftHand", "RightArm", "RightForeArm", "RightHand",
@@ -98,18 +99,30 @@ def vec(v):
 
 # ---- reading the QTM export
 
-def read_segments(path):
+def read_qtm(path):
     with open(path) as f:
         data = json.load(f)
     if "Skeletons" not in data or not data["Skeletons"]:
         sys.exit("No skeleton in %s: export from QTM with the skeleton included." % path)
     skeleton = data["Skeletons"][0]
     rate = float(skeleton["Timebase"]["Frequency"])
+    skel_start = int(skeleton["Timebase"]["Range"]["Start"])
     positions = {}
     for seg in skeleton["Segments"]:
         values = seg["Parts"][0]["Values"]
         positions[seg["Name"]] = [(v[0] / 1000.0, v[1] / 1000.0, v[2] / 1000.0) for v in values]
-    return positions, rate, data.get("Name", "")
+
+    markers = {}
+    skel_end = int(skeleton["Timebase"]["Range"]["End"])
+    for m in data.get("Markers", []):
+        parts = m.get("Parts", [])
+        if len(parts) == 1 and parts[0]["Range"]["Start"] <= skel_start and parts[0]["Range"]["End"] >= skel_end:
+            offset = skel_start - parts[0]["Range"]["Start"]
+            count = skel_end - skel_start + 1
+            vals = parts[0]["Values"][offset:offset + count]
+            markers[m["Name"]] = [(v[0] / 1000.0, v[1] / 1000.0, v[2] / 1000.0) for v in vals]
+
+    return positions, markers, rate, data.get("Name", ""), data.get("MeasurementCreation", "")
 
 
 def sampled(track, rate, t):
@@ -134,7 +147,7 @@ def main():
     p.add_argument("--table-forward", type=float, nargs=2)
     args = p.parse_args()
 
-    seg, rate, qtm_name = read_segments(args.input)
+    seg, markers, rate, qtm_name, recorded = read_qtm(args.input)
     for name in JOINTS:
         if name != "HeadTop_End" and name not in seg:
             sys.exit("The skeleton has no joint named %s (it has %s ...)" % (name, ", ".join(list(seg)[:8])))
@@ -143,17 +156,21 @@ def main():
     start = args.start if args.start is not None else 0.0
     end = min(args.end if args.end is not None else duration, duration)
     side = "Left" if args.left else "Right"
+    side_short = "L" if args.left else "R"
     up = (0.0, 0.0, 1.0)
 
     def at(name, t):
         return sampled(seg[name], rate, t)
+
+    def marker_at(name, t):
+        return sampled(markers[name], rate, t)
 
     def body_right(t):
         # Horizontal direction from the left to the right shoulder.
         r = sub(at("RightArm", t), at("LeftArm", t))
         return unit((r[0], r[1], 0.0))
 
-    # Table frame: given, or from the player's stance.
+    # Table frame: explicit args, else table corner markers, else stance.
     steps = int((end - start) * 10)
     hips_sum, forward_sum = (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
     for i in range(steps + 1):
@@ -161,19 +178,41 @@ def main():
         hips_sum = add(hips_sum, at("Hips", t))
         forward_sum = add(forward_sum, cross(up, body_right(t)))
     hips_mean = mul(hips_sum, 1.0 / (steps + 1))
+
+    table_pair = next((pair for pair in (("TableL", "TableR"), ("b1", "b2"), ("bord0", "bord1"))
+                       if pair[0] in markers and pair[1] in markers), None)
     if args.table_forward:
         forward = unit((args.table_forward[0], args.table_forward[1], 0.0))
+        right = cross(forward, up)
+        origin = (args.table_center[0], args.table_center[1], 0.0) if args.table_center else (
+            hips_mean[0] + forward[0] * args.table_distance,
+            hips_mean[1] + forward[1] * args.table_distance, 0.0)
+        table_source = "given" if args.table_center else "from the stance, provisional"
+    elif args.table_center:
+        forward = unit((forward_sum[0], forward_sum[1], 0.0))
+        right = cross(forward, up)
+        origin = (args.table_center[0], args.table_center[1], 0.0)
+        table_source = "given"
+    elif table_pair is not None:
+        t_mid = 0.5 * (start + end)
+        c0, c1 = marker_at(table_pair[0], t_mid), marker_at(table_pair[1], t_mid)
+        mid = mul(add(c0, c1), 0.5)
+        along = unit((c1[0] - c0[0], c1[1] - c0[1], 0.0))
+        forward = (-along[1], along[0], 0.0)
+        if dot(sub(hips_mean, mid), forward) > 0:
+            forward = mul(forward, -1.0)
+        right = cross(forward, up)
+        center = add(mid, mul(forward, TABLE_HALF_LENGTH))
+        origin = (center[0], center[1], 0.0)
+        table_source = "from %s/%s markers" % table_pair
     else:
         forward = unit((forward_sum[0], forward_sum[1], 0.0))
-    right = cross(forward, up)
-    if args.table_center:
-        origin = (args.table_center[0], args.table_center[1], 0.0)
-    else:
+        right = cross(forward, up)
         origin = (hips_mean[0] + forward[0] * args.table_distance,
                   hips_mean[1] + forward[1] * args.table_distance, 0.0)
+        table_source = "from the stance, provisional"
     print("INFO table centre %.2f %.2f forward %.2f %.2f (%s)" % (
-        origin[0], origin[1], forward[0], forward[1],
-        "given" if args.table_center else "from the stance, provisional"))
+        origin[0], origin[1], forward[0], forward[1], table_source))
 
     def point(w):
         d = sub(w, origin)
@@ -182,16 +221,57 @@ def main():
     def direction(w):
         return (dot(w, right), w[2], dot(w, forward))
 
-    # Racket centre: the hand plus an offset along the forearm.
-    def racket(t):
-        hand, fore = at(side + "Hand", t), at(side + "ForeArm", t)
-        tip = unit(sub(hand, fore))
-        return add(hand, mul(tip, RACKET_FROM_HAND)), tip
+    # Racket pose: from 3 racket markers + wrist markers when present, else forearm offset.
+    wrist_in_name, wrist_out_name = "x_%sWristIn" % side_short, "x_%sWristOut" % side_short
+    racket_names = next((triple for triple in (("Racket1", "Racket2", "Racket3"), ("p1", "p2", "p3"))
+                         if all(k in markers for k in triple)), None)
+    has_racket_markers = (racket_names is not None and wrist_in_name in markers and wrist_out_name in markers)
+
+    if has_racket_markers:
+        p0 = [marker_at(name, start) for name in racket_names]
+        pairs = sorted([(length(sub(p0[i], p0[j])), i, j) for i in range(3) for j in range(i + 1, 3)], reverse=True)
+        _, side_a, side_b = pairs[0]
+        mid_marker = 3 - side_a - side_b
+
+        def raw_racket_pose(t, tip_s, norm_s):
+            m = [marker_at(racket_names[k], t) for k in range(3)]
+            c = mul(add(m[side_a], m[side_b]), 0.5)
+            tip = mul(unit(sub(m[mid_marker], c)), tip_s)
+            across = unit(sub(m[side_b], m[side_a]))
+            norm = mul(unit(cross(across, tip)), norm_s)
+            return c, tip, norm
+
+        tip_votes = norm_votes = 0
+        for i in range(steps + 1):
+            t = start + i * 0.1
+            c, tip, _ = raw_racket_pose(t, 1.0, 1.0)
+            w = mul(add(marker_at(wrist_in_name, t), marker_at(wrist_out_name, t)), 0.5)
+            if length(sub(c, w)) <= 0.6:
+                tip_votes += 1 if dot(tip, sub(c, w)) > 0 else -1
+        tip_sign = 1.0 if tip_votes >= 0 else -1.0
+        for i in range(steps + 1):
+            t = start + i * 0.1
+            c, tip, norm = raw_racket_pose(t, tip_sign, 1.0)
+            w_in, w_out = marker_at(wrist_in_name, t), marker_at(wrist_out_name, t)
+            if length(sub(c, mul(add(w_in, w_out), 0.5))) <= 0.6:
+                thumb_up = unit(sub(w_in, w_out))
+                palm = cross(tip, thumb_up) if args.left else cross(thumb_up, tip)
+                norm_votes += 1 if dot(norm, palm) > 0 else -1
+        normal_sign = 1.0 if norm_votes >= 0 else -1.0
+        print("INFO racket from markers (%d/%d tip votes, %d norm votes)" % (tip_votes, steps + 1, norm_votes))
+
+        def racket_pose(t):
+            return raw_racket_pose(t, tip_sign, normal_sign)
+    else:
+        def racket_pose(t):
+            hand, fore = at(side + "Hand", t), at(side + "ForeArm", t)
+            tip = unit(sub(hand, fore))
+            return add(hand, mul(tip, RACKET_FROM_HAND)), tip, None
 
     # Strokes from racket speed peaks.
     dt = 0.01
     times = [start + i * dt for i in range(int((end - start) / dt) + 1)]
-    centers = [racket(t)[0] for t in times]
+    centers = [racket_pose(t)[0] for t in times]
     speeds = [0.0] + [length(sub(centers[i], centers[i - 1])) / dt for i in range(1, len(centers))]
     smooth = [sum(speeds[max(0, i - 2):i + 3]) / len(speeds[max(0, i - 2):i + 3]) for i in range(len(speeds))]
     strokes = []
@@ -200,7 +280,7 @@ def main():
             if strokes and times[i] - strokes[-1]["t"] < MIN_STROKE_GAP:
                 continue
             t = times[i]
-            c = point(racket(t)[0])
+            c = point(racket_pose(t)[0])
             chest = point(at("Spine2", t))
             offset = (c[0] - chest[0]) * (-1.0 if args.left else 1.0)
             kind = args.type or ("forehand" if offset > 0.15 else "backhand")
@@ -229,11 +309,14 @@ def main():
         joints = [point(joints_w[n]) for n in JOINTS]
         head_center = point(lerp(joints_w["Head"], joints_w["HeadTop_End"], 0.5))
         body_forward = direction(cross(up, body_right(t)))
-        center_w, tip_w = racket(t)
+        center_w, tip_w, norm_w = racket_pose(t)
         y = unit(direction(tip_w))
-        # Forehand side of the blade faces the opponent in a forehand stroke
-        # and away from the opponent in a backhand stroke (assumed).
-        normal = (0.0, 0.0, 1.0 if kind_at(t) == "forehand" else -1.0)
+        if norm_w is not None:
+            normal = unit(direction(norm_w))
+        else:
+            # Forehand side of the blade faces the opponent in a forehand stroke
+            # and away from the opponent in a backhand stroke (assumed).
+            normal = (0.0, 0.0, 1.0 if kind_at(t) == "forehand" else -1.0)
         z = unit(sub(mul(normal, -1.0), mul(y, dot(mul(normal, -1.0), y))))
         x = cross(y, z)
         frames.append({
@@ -252,7 +335,7 @@ def main():
     events = [{"t": round(s["t"] - start, 4), "type": "contact" if s["type"] == "forehand" else "backhand"}
               for s in strokes]
     name = args.name or os.path.splitext(os.path.basename(args.output))[0]
-    clip = {"name": name, "source": "qualisys", "left_handed": args.left, "recorded": "",
+    clip = {"name": name, "source": "qualisys", "left_handed": args.left, "recorded": recorded,
             "has_ball": False, "has_opponent": False, "joint_names": JOINTS,
             "frames": frames, "events": events}
     with open(args.output, "w") as f:

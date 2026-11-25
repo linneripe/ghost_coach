@@ -543,7 +543,67 @@ public static class DesktopSmokeTest {
             fake_controllers.set(false, Btn.Trigger, false);
             GhostCoach coach = Object.FindFirstObjectByType<GhostCoach>();
             check(!coach.ball_feeder.feeding, "paddle hand trigger toggles ball feed off");
+
+            // Visual Dashboard tests (Forehand Drive, Backhand Drive, ball speed, coach speed, View vs Drill, collapse).
+            GhostDashboard dash = coach.dashboard;
+            check(dash != null && dash.canvas_root != null, "GhostDashboard created at runtime");
+            if (dash != null && dash.canvas_root != null) {
+                var buttons = dash.canvas_root.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+                bool all_have_colliders = buttons.Length >= 10;
+                foreach (var b in buttons)
+                    if (b.GetComponent<BoxCollider>() == null)
+                        all_have_colliders = false;
+                check(all_have_colliders, "all " + buttons.Length + " dashboard buttons have BoxColliders for TouchUI/Desktop");
+
+                click_dash_button(dash, "Clip_forehand_drive");
+                check(coach.recorded_clip.name == "forehand_drive"
+                      && coach.ball_feeder.target_side == BallFeeder.TargetSide.Forehand,
+                      "dashboard selects Forehand Drive clip (forehand_drive) and Forehand drill target");
+
+                click_dash_button(dash, "Clip_backhand_drive");
+                check(coach.recorded_clip.name == "backhand_drive"
+                      && coach.ball_feeder.target_side == BallFeeder.TargetSide.Backhand,
+                      "dashboard selects Backhand Drive clip (backhand_drive) and Backhand drill target");
+
+                click_dash_button(dash, "BallSpeed_2");
+                check(coach.ball_speed_level == 2
+                      && Mathf.Approximately(coach.ball_feeder.feed_speed, 6.5f)
+                      && play.robot.speed == 2,
+                      "dashboard sets Ball Speed to Fast (6.5 m/s)");
+
+                click_dash_button(dash, "CoachSpeed_100%");
+                check(Mathf.Approximately(coach.coach_ghost.speed, 1.0f),
+                      "dashboard sets Coach Speed to 100%");
+
+                click_dash_button(dash, "ModeDrill");
+                check(coach.training_mode == GhostCoach.TrainingMode.Drill
+                      && coach.ball_feeder.feeding && !play.robot_active && coach.path_guide.showing,
+                      "dashboard Drill mode starts ball feed and keeps PathGuide active");
+
+                click_dash_button(dash, "ModeView");
+                check(coach.training_mode == GhostCoach.TrainingMode.ViewCoach
+                      && !coach.ball_feeder.feeding && !play.robot_active
+                      && !coach.path_guide.showing && coach.coach_ghost.showing,
+                      "dashboard View Coach mode stops ball feed and hides PathGuide");
+
+                click_dash_button(dash, "DashCollapse");
+                check(dash.collapsed, "dashboard collapses on Hide button");
+                click_dash_button(dash, "DashExpand");
+                check(!dash.collapsed, "dashboard expands on Ghost Coach pill");
+            }
             finish();
+        }
+    }
+
+    static void click_dash_button(GhostDashboard dash, string name) {
+        foreach (var b in dash.canvas_root.GetComponentsInChildren<UnityEngine.UI.Button>(true)) {
+            if (b.gameObject.name == name) {
+                UnityEngine.EventSystems.ExecuteEvents.Execute(
+                    b.gameObject,
+                    new UnityEngine.EventSystems.BaseEventData(UnityEngine.EventSystems.EventSystem.current),
+                    UnityEngine.EventSystems.ExecuteEvents.submitHandler);
+                return;
+            }
         }
     }
 

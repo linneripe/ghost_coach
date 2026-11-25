@@ -86,6 +86,16 @@ crashlytics-build.properties
 # AI assistant context files (local only, never commit)
 CLAUDE.md
 AGENTS.md
+.gemini/
+
+# Windows Explorer cache
+Thumbs.db
+Desktop.ini
+
+# Raw Qualisys QTM project and binary captures (large local files)
+/pingisTest24sep/
+*.qtm
+*.qtmproj*
 
 # The coach's character mesh is a Mixamo character, which may not be
 # redistributed as a standalone file: share it in LU Box, not git (see
