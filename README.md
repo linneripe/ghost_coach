@@ -5,6 +5,43 @@ Uses Unity XR and targets standalone Meta Quest headsets.
 
 https://github.com/user-attachments/assets/65bbd361-80c7-4f36-8441-1f453e02a7d6
 
+## How to Use Ghost Coach
+
+Ghost Coach is a two-phase VR table tennis training mode:
+
+1. **Phase 1 — Watch the Coach:** Stand beside the ghost coach and watch its stroke form.
+2. **Phase 2 — Play with Path Guide:** Step into the hitting position and play against the robot while following the coach's paddle path. After each stroke, you receive a score and a short tip (plus optional haptic feedback on your free hand).
+
+### VR Controller Controls (Right-Handed)
+*Left-handed players have the left and right hand bindings swapped automatically, except the Menu button which stays on the left controller.*
+
+**Paddle Hand (Right):**
+- **A**: Switch between **Phase 1 (Watch Coach)** and **Phase 2 (Play with Path Guide)**
+- **B**: Cycle to the next stroke (or start/stop recording a custom coach clip when `allow_recording` is enabled in `experiment.json`)
+- **Thumbstick Click**: Cycle coach playback speed (`100%` / `50%` / `25%`)
+- **Trigger**: Toggle automatic ball feed
+
+**Free Hand (Left):**
+- **Trigger**: Robot serve
+- **Grip** or **Y**: Hold a ball in hand
+- **X**: Show/hide the racket and ball in hand
+- **Menu**: Open settings menu
+- **Hold Thumbstick (1.5s)**: Start a new participant/experiment session
+
+### Desktop Controls (No Headset)
+When running in the Unity Editor without a VR headset, `DesktopRig` activates automatically (press **H** to toggle the on-screen help):
+- **Mouse / Scroll**: Move paddle / adjust paddle distance
+- **Right Drag + Arrow Keys (Q/E)**: Look around and move
+- **P**: Switch between Coach and Path phases
+- **K**: Next stroke (or record if enabled)
+- **L**: Cycle coach speed (`100%` / `50%` / `25%`)
+- **R** or **S**: Robot serve (**F** toggles automatic ball feed)
+- **G**: Show/hide racket and ball in hand
+- **V**: Switch right/left-handed mode
+- **N**: Start next test participant session
+- **Tab**: Open settings menu (**Left Click** to press buttons)
+- **Backspace**: Reset phase, speed, and view
+
 ## Problems
 
 - Inaccurate hand controller tracking.  This has been the biggest obstacle.  The tracking during fast motions is frequently wrong by more than 10 cm, while the typical table tennis paddle face radius is about 8 cm.  So a motion that should strike the ball in the middle of the paddle completely misses the ball in the VR simulation.
