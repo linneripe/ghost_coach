@@ -129,6 +129,58 @@ public class MotionClip {
         return null;
     }
 
+    public enum DrillSide { Auto, Forehand, Backhand }
+
+    static readonly string[] preferred_clip_order = {
+        "forhand_drive0006", "forhand_inslag0004", "forhand_serve0010",
+        "backhand_drive0008", "backhand_inslag0005", "backhand_serve0009",
+        "coach_take0006"
+    };
+
+    // Load every bundled clip in Resources/GhostCoach/clips, ordered for UI display.
+    public static List<MotionClip> load_all_bundled() {
+        List<MotionClip> clips = new List<MotionClip>();
+        foreach (TextAsset a in Resources.LoadAll<TextAsset>("GhostCoach/clips"))
+            if (a.text.TrimStart().StartsWith("{")) {
+                MotionClip c = JsonUtility.FromJson<MotionClip>(a.text);
+                if (c != null && c.frames.Count > 0)
+                    clips.Add(c);
+            }
+        clips.Sort((a, b) => clip_order(a.name).CompareTo(clip_order(b.name)));
+        return clips;
+    }
+
+    static int clip_order(string clip_name) {
+        int idx = Array.IndexOf(preferred_clip_order, clip_name);
+        return (idx >= 0 ? idx : preferred_clip_order.Length);
+    }
+
+    public static string display_name(string clip_name) {
+        if (string.IsNullOrEmpty(clip_name))
+            return "Coach";
+        switch (clip_name) {
+        case "forhand_drive0006": return "FH Drive";
+        case "forhand_inslag0004": return "FH Rally";
+        case "forhand_serve0010": return "FH Serve";
+        case "backhand_drive0008": return "BH Drive";
+        case "backhand_inslag0005": return "BH Rally";
+        case "backhand_serve0009": return "BH Serve";
+        case "coach_take0006": return "Mixed";
+        default: return clip_name;
+        }
+    }
+
+    public static DrillSide default_side(string clip_name) {
+        if (string.IsNullOrEmpty(clip_name))
+            return DrillSide.Auto;
+        string lower = clip_name.ToLowerInvariant();
+        if (lower.StartsWith("forhand") || lower.StartsWith("forehand"))
+            return DrillSide.Forehand;
+        if (lower.StartsWith("backhand"))
+            return DrillSide.Backhand;
+        return DrillSide.Auto;
+    }
+
     // Most recently written clip that is usable as a coach (see
     // usable_as_coach), or null.  Accidental recordings are skipped.
     public static MotionClip load_latest() {

@@ -243,6 +243,7 @@ public class DesktopRig : MonoBehaviour
             if (keys.backspaceKey.wasPressedThisFrame) coach.OnGhostReset();
             if (keys.gKey.wasPressedThisFrame) coach.OnGhostToggleHands();
             if (keys.fKey.wasPressedThisFrame && coach.ball_feeder != null) coach.ball_feeder.OnToggleBallFeed();
+            if (keys.dKey.wasPressedThisFrame && coach.dashboard != null) coach.dashboard.toggle_collapsed();
         }
         // Same as choosing Right or Left in the settings menu.
         if (keys.vKey.wasPressedThisFrame && play.settings != null)
@@ -348,8 +349,8 @@ public class DesktopRig : MonoBehaviour
             "Right drag: look       Arrows, Q/E: walk, down/up (Shift fast)\n" +
             "Z/X: open/close face   C: forehand/backhand (" + (backhand ? "backhand" : "forehand") + ")\n" +
             "B: ball in hand        Space: toss    R or S: robot serve\n" +
-            "Tab: settings menu     Left click: press menu buttons\n" +
-            "P: coach/path phase   K: next stroke\n" +
+            "Tab: settings menu     Left click: press menu/dashboard buttons\n" +
+            "D: hide/show coach dashboard   P: coach/path phase   K: next stroke\n" +
             "L: coach speed 100/50/25%   V: right/left handed\n" +
             "N: next test participant   Backspace: reset\n" +
             "G: hide/show racket and ball in hand   F: ball feed\n" +
