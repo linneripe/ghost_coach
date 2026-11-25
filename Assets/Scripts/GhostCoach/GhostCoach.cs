@@ -3,19 +3,24 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Training flow decided by the team:
-//   Phase 1 Coach: the ghost coach plays at the table in the hitting
-//     position while the player stands beside it, facing the same way,
-//     and watches.
-//   Phase 2 Path: the player plays in the hitting position with the
-//     coach's paddle path shown as support, and gets a score and one tip
-//     per stroke (PathGuide, StrokeCompare).
-// The ball is always in play.  The player switches phase with a button
-// (right controller A, P on the keyboard).  The right controller B button
-// (K on the keyboard) starts and stops recording a coach clip.  Clicking
-// the right thumbstick (L on the keyboard) changes the coach's playback
-// speed.  Left X (G on the keyboard) hides or shows the racket and ball in
-// the hand.  Backspace (desktop only) resets phase, speed and view.  Holding the left thumbstick in (N on the keyboard) starts a
-// session for the next test participant (Experiment).
+//   Phase 1 Coach (watch): the ghost coach swings the chosen stroke in the
+//     air on the table's centre line while the player stands beside it,
+//     facing the same way, and watches.
+//   Phase 2 Path (play): the player plays with the coach's paddle path
+//     shown as support, and gets a score and one tip per stroke (PathGuide,
+//     StrokeCompare).  The coach stays beside the player.
+// The player chooses one of four strokes in the stroke panel (StrokePanel).  It
+// hangs in the air beside the table from the start, with the laser on so a
+// stroke can be chosen at once.  Left Y turns the laser on and off again (M
+// on the keyboard); the laser comes from the paddle hand controller and the
+// trigger chooses (the mouse on the keyboard).  Right A switches phase
+// (P on the keyboard).  Right B hides or shows the coach (K on the keyboard;
+// it starts and stops recording a coach clip if recording is turned on).
+// Clicking the right thumbstick (L on the keyboard) changes the coach's
+// playback speed.  Left X (G on the keyboard) hides or shows the racket and
+// ball in the hand.  Backspace (desktop only) resets phase, speed and view.
+// Holding the left thumbstick in (N on the keyboard) starts a session for the
+// next test participant (Experiment).
 //
 // Added at run time to the object holding the PlayerInput so it receives
 // the On<Action> messages from PlayControls.inputactions.
@@ -36,10 +41,58 @@ public class GhostCoach : MonoBehaviour {
     public Experiment experiment;
     public bool allow_recording = false;
     public int stroke = 0;               // The stroke of the clip repeated and followed.
+    public List<StrokeDef> strokes = new List<StrokeDef>();   // The strokes to choose from.
+    public int stroke_choice = -1;       // Index in strokes of the chosen one.
+    public bool coach_visible = true;
+    public StrokePanel panel;
     bool player_left_handed;
     bool bindings_set = false;
     bool variant_applied = false;
     Dictionary<MeshRenderer, bool> robot_visible = new Dictionary<MeshRenderer, bool>();
+
+    // A kind of stroke to practice and the clip with it (null if there is no data).
+    public class StrokeDef {
+        public string id, label;
+        public MotionClip clip;
+        public bool available { get { return clip != null; } }
+    }
+
+    // The four strokes a beginner learns first.  A clip belongs to a stroke when
+    // its name is the id, or the id and then only digits (backhand_drive0008).
+    static readonly string[,] stroke_names = {
+        {"forehand", "Forehand"}, {"forehand_drive", "Forehand drive"},
+        {"backhand", "Backhand"}, {"backhand_drive", "Backhand drive"},
+    };
+
+    // The number a take ends with (backhand_drive0009 is 9), or -1.
+    static int take_number(MotionClip c) {
+        int end = c.name.Length, start = end;
+        while (start > 0 && char.IsDigit(c.name[start - 1]))
+            start -= 1;
+        int n;
+        return (start < end && int.TryParse(c.name.Substring(start), out n) ? n : -1);
+    }
+
+    // The newest take of a stroke: the highest take number.
+    public static MotionClip newest_clip(List<MotionClip> clips, string id) {
+        MotionClip best = null;
+        foreach (MotionClip c in clips)
+            if (clip_is(c, id) && (best == null || take_number(c) >= take_number(best)))
+                best = c;
+        return best;
+    }
+
+    static bool clip_is(MotionClip c, string id) {
+        string name = c.name.ToLower().Replace(' ', '_');
+        if (name == id)
+            return true;
+        if (!name.StartsWith(id))
+            return false;
+        foreach (char ch in name.Substring(id.Length))
+            if (!char.IsDigit(ch))
+                return false;
+        return true;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void create() {
@@ -89,11 +142,18 @@ public class GhostCoach : MonoBehaviour {
         spawn.play = play;
         spawn.coach = ghost;
 
+        StrokePanel stroke_panel = g.AddComponent<StrokePanel>();
+        stroke_panel.play = play;
+        stroke_panel.coach = coach;
+        coach.panel = stroke_panel;
+
         ControllerInput controllers = g.AddComponent<ControllerInput>();
         controllers.play = play;
         controllers.buttons = buttons;
         controllers.coach = coach;
     }
+
+    MessagePlate message_plate;
 
     void Start() {
         // A clip shipped with the app (mocap), else a made-up forehand drive
@@ -106,23 +166,45 @@ public class GhostCoach : MonoBehaviour {
         GhostVisuals.make_racket_round(play.paddle_hand.held_paddle.transform);
         GhostVisuals.make_racket_round(play.robot.paddle.transform);
         hand_visuals.apply_hidden(ExperimentState.load().hide_hand_visuals);
-        string record_hint = (allow_recording ? "   B: spela in egen coach" : "   B: byta slag");
-        MotionClip c = (allow_recording ? MotionClip.load_latest() : null);
-        if (c == null) {
-            c = MotionClip.load_bundled();
-            if (c != null)
-                show_message("Coach: " + c.name + "\nA: byt fas" + record_hint);
+        if (play.billboard != null)
+            message_plate = MessagePlate.attach(play.billboard);
+        // The clips shipped with the app, one per stroke.  If none of them is
+        // one of the four strokes, the first clip is the coach (or a made-up
+        // forehand drive), as before.  A coach recorded on this headset is
+        // used first only if recording is turned on in experiment.json.
+        List<MotionClip> clips = new List<MotionClip>();
+        MotionClip recorded = (allow_recording ? MotionClip.load_latest() : null);
+        if (recorded != null)
+            clips.Add(recorded);
+        else
+            clips = MotionClip.load_all_bundled();
+        strokes.Clear();
+        for (int i = 0 ; i < stroke_names.GetLength(0) ; ++i) {
+            StrokeDef d = new StrokeDef();
+            d.id = stroke_names[i, 0];
+            d.label = stroke_names[i, 1];
+            d.clip = newest_clip(clips, d.id);
+            strokes.Add(d);
+            Debug.Log("GhostCoach stroke " + d.label + ": " + (d.available ? d.clip.name : "no data"));
         }
-        if (c == null) {
-            float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
-            c = MockCoach.forehand_drive(table, ball_radius);
-            show_message("Demo-coach (påhittad forehand)\nA: byt fas" + record_hint);
-        }
-        Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
-                  + c.contact_times().Count + " strokes");
-        set_coach(c);
         experiment = new Experiment(this);
-        experiment.start_session();
+        int first = strokes.FindIndex(d => d.available);
+        if (first >= 0) {
+            experiment.start_session();
+            choose_stroke(first);
+            hang_panel();
+            open_panel();           // Choose a stroke at once.
+        } else {
+            MotionClip c = (clips.Count > 0 ? clips[0] : null);
+            if (c == null) {
+                float ball_radius = (play.ball_in_play != null ? play.ball_in_play.radius : 0.02f);
+                c = MockCoach.forehand_drive(table, ball_radius);
+            }
+            Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), " + c.strokes().Count + " strokes");
+            use_clip(c);
+            experiment.start_session();
+            show_status();
+        }
     }
 
     void OnDestroy() {
@@ -209,32 +291,102 @@ public class GhostCoach : MonoBehaviour {
         if (coach_clip == null)
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
         else
-            show_message(phase == Phase.Coach
-                         ? "Titta på coachen\nA: spela mot roboten   B: byta slag"
-                         : "Spela mot roboten\nA: titta på coachen   B: byta slag");
+            show_status();
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
         experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
     }
 
-    // Repeat the next stroke of the clip: the coach shows it in phase 1 and
-    // its paddle path is the reference in phase 2.
-    public void next_stroke() {
-        if (coach_clip == null)
+    // Use a clip as the coach, repeating its middle stroke (the first and
+    // last of a rally are the least even).
+    void use_clip(MotionClip c) {
+        stroke = coach_ghost.stroke = path_guide.stroke = (c != null ? c.strokes().Count / 2 : 0);
+        set_coach(c);
+    }
+
+    // Practice one of the four strokes: the coach shows it, and its paddle
+    // path is the reference in the play phase.
+    public void choose_stroke(int index) {
+        if (index < 0 || index >= strokes.Count || !strokes[index].available)
             return;
-        List<MotionEvent> strokes = coach_clip.strokes();
-        if (strokes.Count < 2) {
-            show_message("Bara ett slag finns");
-            return;
-        }
-        stroke = (stroke + 1) % strokes.Count;
-        coach_ghost.stroke = stroke;
-        path_guide.stroke = stroke;
+        stroke_choice = index;
+        use_clip(strokes[index].clip);
+        // The ball feed comes to the side the stroke is played on.
+        if (ball_feeder != null)
+            ball_feeder.stroke_side = (strokes[index].id.StartsWith("backhand") ? -1f : 1f);
+        if (panel != null && panel.open)
+            panel.close();
+        if (panel != null)
+            panel.refresh();
+        show_status();
+        // Two quick pulses, the second stronger: a choice, not just a touch.
+        play.paddle_hand.wand.haptic_pulses(2, 0.03f, 0.5f, 0.04f);
+        Camera head = (play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
+        GhostSounds.play("select", head != null ? head.transform.position : Vector3.zero);
+        experiment.log_event("stroke_select", strokes[index].id);
+    }
+
+    // The text on the billboard: the stroke, what is going on and the buttons
+    // that matter now.
+    void show_status() {
+        string label = (stroke_choice >= 0 ? strokes[stroke_choice].label
+                        : (coach_clip != null ? coach_clip.name : ""));
+        show_message(label + "\n" + (phase == Phase.Coach
+                         ? "Titta på coachen\n" + button("A", "P") + ": spela   " + button("Y", "M") + ": byt slag"
+                         : "Din tur\n" + button("A", "P") + ": titta   " + button("Y", "M") + ": byt slag"));
+    }
+
+    // Name of a button in the hints: the controller button in the headset, the
+    // key in desktop mode (mouse and keyboard).
+    public static string button(string controller, string key) {
+        return (DesktopRig.active != null ? key : controller);
+    }
+
+    // Hide the coach, or bring it back.
+    public void toggle_coach() {
+        coach_visible = !coach_visible;
         update_ghost();
-        string kind = (strokes[stroke].type == "backhand" ? "backhand" : "forehand");
-        show_message("Slag " + (stroke + 1) + " av " + strokes.Count + ": " + kind);
-        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
-        experiment.log_event("stroke_select", (stroke + 1) + " " + kind);
+        if (panel != null)
+            panel.refresh();
+        show_message(coach_visible ? "Coachen är tillbaka" : "Coachen är dold\n" + button("B", "K") + ": visa igen");
+        experiment.log_event("coach_visible", coach_visible ? "shown" : "hidden");
+    }
+
+    public bool panel_open {
+        get { return panel != null && panel.open; }
+    }
+
+    // Hang the stroke panel in the air beside the table: next to the player,
+    // on the side away from the coach, a little ahead and at eye height, turned
+    // toward the player.  It stays there during the game.
+    public void hang_panel() {
+        if (panel == null || strokes.Count == 0 || !coach_ghost.has_spot)
+            return;
+        Transform t = table.transform;
+        Vector3 spot = coach_ghost.player_spot;
+        float top_y;
+        float side = (TableSpace.to_table(t, spot).x < TableSpace.center(table, out top_y).x ? -1f : 1f);
+        Vector3 position = spot + 1.1f * t.forward + 0.5f * side * t.right + 1.4f * Vector3.up;
+        panel.hang(position, spot + 1.5f * Vector3.up);
+    }
+
+    public void open_panel() {
+        if (panel == null || strokes.Count == 0)
+            return;
+        if (!panel.hanging)
+            hang_panel();
+        panel.show();
+        show_message(DesktopRig.active != null
+                     ? "Peka med musen på ett slag\nKlicka: välj   M: stäng"
+                     : "Peka på ett slag\nAvtryckare: välj   Y: stäng");
+    }
+
+    // Stop pointing at the panel; it keeps hanging.
+    public void close_panel() {
+        if (panel != null && panel.open) {
+            panel.close();
+            show_status();
+        }
     }
 
     public void toggle_recording() {
@@ -271,10 +423,10 @@ public class GhostCoach : MonoBehaviour {
     void update_ghost() {
         bool live = (coach_clip != null && !recorder.recording);
         if (live)
-            coach_ghost.show(coach_clip);
-        else
+            coach_ghost.show(coach_clip);        // Also places the player's spot.
+        if (!live || !coach_visible)
             coach_ghost.hide();
-        set_robot(phase == Phase.Path);
+        update_robot();
         path_guide.offset = coach_ghost.player_shift;
         if (live && phase == Phase.Path)
             path_guide.show(coach_clip);
@@ -294,8 +446,12 @@ public class GhostCoach : MonoBehaviour {
         }
     }
 
-    // The robot only plays in phase 2: no serve or return, and its paddle
-    // is hidden, in phase 1.
+    // The robot only plays in phase 2, and not while balls are fed: no serve or
+    // return, and its paddle is hidden, in phase 1.
+    public void update_robot() {
+        set_robot(phase == Phase.Path && (ball_feeder == null || !ball_feeder.feeding));
+    }
+
     void set_robot(bool active) {
         play.robot_active = active;
         foreach (MeshRenderer r in play.robot.paddle.GetComponentsInChildren<MeshRenderer>(true)) {
@@ -318,7 +474,10 @@ public class GhostCoach : MonoBehaviour {
     // long pulse means a good stroke, two short pulses mean look at the tip.
     public void stroke_scored(StrokeScore s) {
         Variant v = experiment.variant;
-        show_message(v.feedback_text ? "Score " + s.score + "\n" + s.tip : "");
+        // The plate's edge shows how close the stroke was: green, amber or orange.
+        show_message(v.feedback_text ? "Score " + s.score + "\n" + s.tip : "",
+                     s.score >= StrokeCompare.good_score ? new Color(0.45f, 0.88f, 0.62f)
+                     : (s.score >= 0.6f * StrokeCompare.good_score ? new Color(1f, 0.80f, 0.35f) : GlassStyle.accent));
         if (v.feedback_haptic) {
             if (s.score >= StrokeCompare.good_score)
                 play.free_hand.wand.haptic_pulses(1, 0.15f, 0.6f, 0f);
@@ -337,7 +496,10 @@ public class GhostCoach : MonoBehaviour {
     public void reset() {
         recorder.cancel_recording();
         coach_ghost.speed = 0.5f;
-        stroke = coach_ghost.stroke = path_guide.stroke = 0;
+        stroke = coach_ghost.stroke = path_guide.stroke = (coach_clip != null ? coach_clip.strokes().Count / 2 : 0);
+        coach_visible = true;
+        if (panel != null)
+            panel.close();
         phase = Phase.Coach;
         update_ghost();
         show_message("Återställd\nTitta på coachen");
@@ -357,14 +519,18 @@ public class GhostCoach : MonoBehaviour {
 
     public void change_speed() {
         float s = coach_ghost.next_speed();
+        if (panel != null)
+            panel.refresh();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
         experiment.log_event("coach_speed", Mathf.RoundToInt(100f * s) + "%");
     }
 
-    void show_message(string text) {
+    void show_message(string text, Color? tint = null) {
         Debug.Log("GhostCoach: " + text.Replace("\n", " "));
         if (play.billboard != null)
             play.billboard.text = text;
+        if (message_plate != null)
+            message_plate.tint(tint);
     }
 
     // Input System messages (PlayControls.inputactions, PlayActions map).
@@ -374,14 +540,32 @@ public class GhostCoach : MonoBehaviour {
         set_phase(phase == Phase.Coach ? Phase.Path : Phase.Coach);
     }
 
-    // Right B: change the stroke, or record a coach if that is turned on.
+    // Right B: hide or show the coach, or record a coach if that is turned on.
     public void OnGhostRecord() {
         if (!ButtonDedup.accept("GhostRecord"))
             return;
         if (allow_recording)
             toggle_recording();
         else
-            next_stroke();
+            toggle_coach();
+    }
+
+    // Left Y: open or close the stroke panel.
+    public void OnGhostMenu() {
+        if (!ButtonDedup.accept("GhostMenu"))
+            return;
+        if (panel_open)
+            close_panel();
+        else
+            open_panel();
+    }
+
+    // The trigger of the paddle hand while the panel is open.
+    public void OnGhostPanelClick() {
+        if (!ButtonDedup.accept("GhostPanelClick"))
+            return;
+        if (panel != null)
+            panel.click();
     }
 
     public void OnGhostSpeed() {

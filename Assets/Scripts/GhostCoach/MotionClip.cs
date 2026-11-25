@@ -129,6 +129,16 @@ public class MotionClip {
         return null;
     }
 
+    // All clips shipped with the app, by name: one clip per stroke.
+    public static List<MotionClip> load_all_bundled() {
+        List<MotionClip> list = new List<MotionClip>();
+        foreach (TextAsset a in Resources.LoadAll<TextAsset>("GhostCoach/clips"))
+            if (a.text.TrimStart().StartsWith("{"))
+                list.Add(JsonUtility.FromJson<MotionClip>(a.text));
+        list.Sort((x, y) => string.Compare(x.name, y.name, System.StringComparison.Ordinal));
+        return list;
+    }
+
     // Most recently written clip that is usable as a coach (see
     // usable_as_coach), or null.  Accidental recordings are skipped.
     public static MotionClip load_latest() {

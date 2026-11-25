@@ -17,7 +17,13 @@ public class BallFeeder : MonoBehaviour {
     // Coordinates relative to the full table center (at the net; y relative to top_y).
     public Vector3 spawn_offset = new Vector3(0.0f, 0.35f, 1.45f);
     public float bounce_z = -1.05f;        // Where the ball lands on the player's half, m from the net.
-    public float bounce_x_limit = 0.55f;   // Landing spot stays this far from the table's side edges.
+    public float bounce_x_limit = 0.60f;   // Landing spot stays this far from the table's centre line.
+    // The ball comes in at an angle that follows the coach's stroke: toward
+    // the paddle side for a forehand (+1), toward the other side for a
+    // backhand (-1), straight for 0.
+    public float stroke_side = 0f;
+    public float stroke_shift = 0.30f;     // Meters the landing spot moves to that side.
+    public float stroke_angle = 0.45f;     // Meters the ball starts to the other side of the landing spot.
 
     public bool feeding { get; private set; }
     public int fed_count { get; private set; }
@@ -49,14 +55,10 @@ public class BallFeeder : MonoBehaviour {
                 play.robot.auto_serve = false;
         }
 
-        // Run standalone: hide GhostCoach visuals if present.
+        // The coach stays beside the player; only the robot rests.
         GhostCoach coach = GetComponent<GhostCoach>();
-        if (coach != null) {
-            if (coach.coach_ghost != null)
-                coach.coach_ghost.hide();
-            if (coach.path_guide != null)
-                coach.path_guide.hide();
-        }
+        if (coach != null)
+            coach.update_robot();
 
         show_message("Ball Feed: ON (every " + feed_interval.ToString("F1") + " s)");
     }
@@ -65,6 +67,9 @@ public class BallFeeder : MonoBehaviour {
         if (!feeding)
             return;
         feeding = false;
+        GhostCoach coach = GetComponent<GhostCoach>();
+        if (coach != null)
+            coach.update_robot();
         show_message("Ball Feed: OFF");
     }
 
@@ -94,12 +99,16 @@ public class BallFeeder : MonoBehaviour {
         // TableSpace.center() returns the center of table_top (the near half);
         // shift to the middle of the full table (the net) so far_bounce lands on the far half.
         center.z += 0.5f * table.table_top.transform.lossyScale.z;
+        // Land near the player, so the ball comes to where they stand, moved to
+        // the side of the stroke, and start on the other side: a diagonal ball.
+        float paddle_x = stroke_side * (play != null && play.paddle_hand.wand.left ? -1f : 1f);
+        float near_player = Mathf.Clamp(player_x() - center.x, -0.35f, 0.35f);
+        float bounce_x = Mathf.Clamp(near_player + paddle_x * stroke_shift, -bounce_x_limit, bounce_x_limit);
+        float spawn_x = bounce_x - paddle_x * stroke_angle;
         Vector3 spawn = TableSpace.to_world(table.transform,
-                                            new Vector3(center.x + spawn_offset.x,
+                                            new Vector3(center.x + spawn_offset.x + spawn_x,
                                                         top_y + spawn_offset.y,
                                                         center.z + spawn_offset.z));
-        // Land in line with the player, so the ball comes to where they stand.
-        float bounce_x = Mathf.Clamp(player_x() - center.x, -bounce_x_limit, bounce_x_limit);
         Vector3 bounce = TableSpace.to_world(table.transform,
                                              new Vector3(center.x + bounce_x,
                                                          top_y + b.radius,

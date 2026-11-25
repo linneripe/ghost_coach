@@ -35,6 +35,28 @@ public static class GhostVisuals {
         return Resources.Load<Material>("GhostCoach/" + name);
     }
 
+    // The coach's body: see-through with a light rim, and each pixel colored
+    // once so overlapping limbs do not darken.  The ordinary ghost material
+    // if the shader is missing.
+    static Material body;
+    public static Material body_material() {
+        if (body == null) {
+            Shader shader = Resources.Load<Shader>("GhostCoach/GhostGlow");
+            body = (shader != null ? new Material(shader) : material("ghost"));
+        }
+        return body;
+    }
+
+    // The coach's racket in the accent color, so the eye finds it first.
+    static Material racket;
+    public static Material racket_material() {
+        if (racket == null) {
+            racket = new Material(material("ghost"));
+            racket.color = new Color(1f, 0.52f, 0.14f, 0.7f);
+        }
+        return racket;
+    }
+
     public static Transform primitive(PrimitiveType type, string name, Material m, Transform parent) {
         GameObject g = GameObject.CreatePrimitive(type);
         g.name = name;
