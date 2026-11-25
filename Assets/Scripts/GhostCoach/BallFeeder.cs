@@ -49,14 +49,10 @@ public class BallFeeder : MonoBehaviour {
                 play.robot.auto_serve = false;
         }
 
-        // Run standalone: hide GhostCoach visuals if present.
+        // The coach stays beside the player; only the robot rests.
         GhostCoach coach = GetComponent<GhostCoach>();
-        if (coach != null) {
-            if (coach.coach_ghost != null)
-                coach.coach_ghost.hide();
-            if (coach.path_guide != null)
-                coach.path_guide.hide();
-        }
+        if (coach != null)
+            coach.update_robot();
 
         show_message("Ball Feed: ON (every " + feed_interval.ToString("F1") + " s)");
     }
@@ -65,6 +61,9 @@ public class BallFeeder : MonoBehaviour {
         if (!feeding)
             return;
         feeding = false;
+        GhostCoach coach = GetComponent<GhostCoach>();
+        if (coach != null)
+            coach.update_robot();
         show_message("Ball Feed: OFF");
     }
 

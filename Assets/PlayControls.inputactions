@@ -85,6 +85,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "GhostMenu",
+                    "type": "Button",
+                    "id": "4b70b39c-0fe4-42aa-9ced-4daf197ee9eb",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -117,17 +126,6 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "PlayControls",
-                    "action": "HoldBall",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "e6b98639-62c1-4cdc-aa81-d0f43c406ec6",
-                    "path": "<XRController>{LeftHand}/secondaryButton",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
                     "action": "HoldBall",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -206,6 +204,17 @@
                     "processors": "",
                     "groups": "PlayControls",
                     "action": "GhostToggleHands",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "11377d9f-0276-46ee-9a97-0990e1968e16",
+                    "path": "<XRController>{LeftHand}/secondaryButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "PlayControls",
+                    "action": "GhostMenu",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

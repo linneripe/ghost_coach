@@ -67,6 +67,23 @@ public class Wand : MonoBehaviour {
 	return false;
     }
     
+    // Pose of the controller for pointing at a menu, in world coordinates.
+    // Unlike wand_motion() it does not touch the velocity bookkeeping.
+    public bool pose(out Vector3 position, out Quaternion rotation) {
+	position = Vector3.zero;
+	rotation = Quaternion.identity;
+	if (!have_device())
+	    return false;
+	Vector3 p;
+	Quaternion r;
+	if (!device.TryGetFeatureValue(CommonUsages.devicePosition, out p)
+	    || !device.TryGetFeatureValue(CommonUsages.deviceRotation, out r))
+	    return false;
+	position = tracking_space.TransformPoint(p);
+	rotation = tracking_space.rotation * r;
+	return true;
+    }
+
     // Lighthouse device serial number, e.g. "LHR-5D7C5B12"
     /*
     string serial_number() {

@@ -60,6 +60,10 @@ public class CoachGhost : MonoBehaviour {
         get { return playback_time; }
     }
 
+    // The part of the clip that repeats.
+    public float loop_from { get { return loop_start; } }
+    public float loop_to { get { return loop_end; } }
+
     // Where the coach is now, world coordinates.
     public Vector3 coach_position {
         get { return head.position; }
@@ -108,16 +112,25 @@ public class CoachGhost : MonoBehaviour {
         return speed;
     }
 
-    // Repeat the chosen stroke, from a little before its ball contact to a
-    // little after, or the whole clip if it has no strokes.
+    // Repeat the chosen stroke, from a little before its contact to a little
+    // after, or the whole clip if it has no strokes.  In a rally (strokes
+    // under a second apart) the loop is half the gap to the stroke before and
+    // after, so it holds one stroke; an isolated stroke gets lead_time and
+    // follow_time.
     void set_loop() {
         List<MotionEvent> strokes = clip.strokes();
         loop_start = 0f;
         loop_end = clip.duration;
         if (strokes.Count > 0) {
-            float contact = strokes[stroke % strokes.Count].t;
-            loop_start = Mathf.Max(0f, contact - lead_time);
-            loop_end = Mathf.Min(clip.duration, contact + follow_time);
+            int i = stroke % strokes.Count;
+            float contact = strokes[i].t;
+            float lead = lead_time, follow = follow_time;
+            if (i > 0)
+                lead = Mathf.Clamp(0.5f * (contact - strokes[i-1].t), 0.3f, lead_time);
+            if (i + 1 < strokes.Count)
+                follow = Mathf.Clamp(0.5f * (strokes[i+1].t - contact), 0.3f, follow_time);
+            loop_start = Mathf.Max(0f, contact - lead);
+            loop_end = Mathf.Min(clip.duration, contact + follow);
         }
     }
 
