@@ -22,6 +22,7 @@ using UnityEngine.InputSystem;
 public class GhostCoach : MonoBehaviour {
 
     public enum Phase { Coach, Path }
+    public enum TrainingMode { ViewCoach, Drill, Rally }
 
     public Play play;
     public MotionRecorder recorder;
@@ -29,10 +30,16 @@ public class GhostCoach : MonoBehaviour {
     public PathGuide path_guide;
     public HandVisuals hand_visuals;
     public BallFeeder ball_feeder;
+    public GhostDashboard dashboard;
     public Table table;
     public Phase phase = Phase.Coach;
+    public TrainingMode training_mode = TrainingMode.ViewCoach;
+    public bool show_path_in_drill = true;
+    public int ball_speed_level = 1;     // 0 = Slow, 1 = Medium, 2 = Fast.
     public MotionClip recorded_clip;     // As recorded (or the mock coach).
     public MotionClip coach_clip;        // As shown: mirrored if the player uses the other hand.
+    public MotionClip custom_recorded_clip;
+    public List<MotionClip> available_clips = new List<MotionClip>();
     public Experiment experiment;
     public bool allow_recording = false;
     public int stroke = 0;               // The stroke of the clip repeated and followed.
@@ -93,6 +100,12 @@ public class GhostCoach : MonoBehaviour {
         controllers.play = play;
         controllers.buttons = buttons;
         controllers.coach = coach;
+
+        GhostDashboard dash = g.AddComponent<GhostDashboard>();
+        dash.coach = coach;
+        dash.play = play;
+        dash.table = table;
+        coach.dashboard = dash;
     }
 
     void Start() {
@@ -106,8 +119,11 @@ public class GhostCoach : MonoBehaviour {
         GhostVisuals.make_racket_round(play.paddle_hand.held_paddle.transform);
         GhostVisuals.make_racket_round(play.robot.paddle.transform);
         hand_visuals.apply_hidden(ExperimentState.load().hide_hand_visuals);
+        available_clips = MotionClip.load_all_bundled();
         string record_hint = (allow_recording ? "   B: spela in egen coach" : "   B: byta slag");
         MotionClip c = (allow_recording ? MotionClip.load_latest() : null);
+        if (c != null)
+            custom_recorded_clip = c;
         if (c == null) {
             c = MotionClip.load_bundled();
             if (c != null)
@@ -121,8 +137,11 @@ public class GhostCoach : MonoBehaviour {
         Debug.Log("GhostCoach coach clip " + c.name + " (" + c.source + "), "
                   + c.contact_times().Count + " strokes");
         set_coach(c);
+        apply_clip_drill_settings(c);
         experiment = new Experiment(this);
         experiment.start_session();
+        if (dashboard != null)
+            dashboard.build_and_refresh();
     }
 
     void OnDestroy() {
@@ -200,11 +219,15 @@ public class GhostCoach : MonoBehaviour {
             set_coach(recorded_clip);
             show_message(player_left_handed ? "Vänsterhänt: coachen spegelvänd" : "Högerhänt");
             experiment.log_event("hand", player_left_handed ? "left" : "right");
+            refresh_dashboard();
         }
     }
 
     public void set_phase(Phase p) {
         phase = p;
+        training_mode = (p == Phase.Coach ? TrainingMode.ViewCoach : TrainingMode.Rally);
+        if (ball_feeder != null && ball_feeder.feeding)
+            ball_feeder.stop_feeding();
         update_ghost();
         if (coach_clip == null)
             show_message("Ingen coach inspelad än\nTryck B för att spela in");
@@ -215,6 +238,91 @@ public class GhostCoach : MonoBehaviour {
         // Two short pulses, different from the single pulse of a ball hit.
         play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
         experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
+        refresh_dashboard();
+    }
+
+    public void select_training_mode(TrainingMode mode) {
+        training_mode = mode;
+        phase = (mode == TrainingMode.ViewCoach ? Phase.Coach : Phase.Path);
+        if (mode == TrainingMode.Drill) {
+            if (ball_feeder != null && !ball_feeder.feeding)
+                ball_feeder.start_feeding(false);
+        } else {
+            if (ball_feeder != null && ball_feeder.feeding)
+                ball_feeder.stop_feeding();
+        }
+        update_ghost();
+        string label = (mode == TrainingMode.ViewCoach ? "View Coach"
+                        : (mode == TrainingMode.Drill ? "Drill (Ball Feed)" : "Rally (Robot)"));
+        show_message(MotionClip.display_name(recorded_clip != null ? recorded_clip.name : "") + "\n" + label);
+        play.paddle_hand.wand.haptic_pulses(2, 0.04f, 0.6f, 0.08f);
+        if (experiment != null) {
+            experiment.log_event("training_mode", mode.ToString().ToLowerInvariant());
+            experiment.log_event("phase", phase == Phase.Coach ? "coach" : "path");
+        }
+        refresh_dashboard();
+    }
+
+    public void select_clip(MotionClip clip) {
+        if (clip == null)
+            return;
+        stroke = 0;
+        coach_ghost.stroke = 0;
+        path_guide.stroke = 0;
+        set_coach(clip);
+        apply_clip_drill_settings(clip);
+        show_message("Mode: " + MotionClip.display_name(clip.name));
+        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
+        if (experiment != null)
+            experiment.log_event("clip_select", clip.name);
+        refresh_dashboard();
+    }
+
+    public void set_ball_speed(int level) {
+        ball_speed_level = Mathf.Clamp(level, 0, 2);
+        if (ball_feeder != null)
+            ball_feeder.apply_speed_level(ball_speed_level);
+        if (play != null && play.robot != null)
+            play.robot.speed = ball_speed_level;
+        sync_settings_rally_speed(ball_speed_level);
+        string label = BallFeeder.speed_labels[ball_speed_level];
+        show_message("Ball speed: " + label);
+        if (experiment != null)
+            experiment.log_event("ball_speed", label.ToLowerInvariant());
+        refresh_dashboard();
+    }
+
+    public void set_coach_speed(float speed) {
+        coach_ghost.speed = speed;
+        int pct = Mathf.RoundToInt(100f * speed);
+        show_message("Coachens hastighet " + pct + " %");
+        if (experiment != null)
+            experiment.log_event("coach_speed", pct + "%");
+        refresh_dashboard();
+    }
+
+    public void set_drill_path_visible(bool visible) {
+        show_path_in_drill = visible;
+        update_ghost();
+        refresh_dashboard();
+    }
+
+    public void select_stroke(int index) {
+        if (coach_clip == null)
+            return;
+        List<MotionEvent> strokes = coach_clip.strokes();
+        if (strokes.Count == 0)
+            return;
+        stroke = ((index % strokes.Count) + strokes.Count) % strokes.Count;
+        coach_ghost.stroke = stroke;
+        path_guide.stroke = stroke;
+        update_ghost();
+        string kind = (strokes[stroke].type == "backhand" ? "backhand" : "forehand");
+        show_message("Slag " + (stroke + 1) + " av " + strokes.Count + ": " + kind);
+        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
+        if (experiment != null)
+            experiment.log_event("stroke_select", (stroke + 1) + " " + kind);
+        refresh_dashboard();
     }
 
     // Repeat the next stroke of the clip: the coach shows it in phase 1 and
@@ -227,14 +335,49 @@ public class GhostCoach : MonoBehaviour {
             show_message("Bara ett slag finns");
             return;
         }
-        stroke = (stroke + 1) % strokes.Count;
-        coach_ghost.stroke = stroke;
-        path_guide.stroke = stroke;
-        update_ghost();
-        string kind = (strokes[stroke].type == "backhand" ? "backhand" : "forehand");
-        show_message("Slag " + (stroke + 1) + " av " + strokes.Count + ": " + kind);
-        play.paddle_hand.wand.haptic_pulses(1, 0.04f, 0.5f, 0f);
-        experiment.log_event("stroke_select", (stroke + 1) + " " + kind);
+        select_stroke(stroke + 1);
+    }
+
+    public void prev_stroke() {
+        if (coach_clip == null)
+            return;
+        List<MotionEvent> strokes = coach_clip.strokes();
+        if (strokes.Count < 2) {
+            show_message("Bara ett slag finns");
+            return;
+        }
+        select_stroke(stroke - 1);
+    }
+
+    void apply_clip_drill_settings(MotionClip clip) {
+        if (clip == null)
+            return;
+        MotionClip.DrillSide side = MotionClip.default_side(clip.name);
+        if (ball_feeder != null) {
+            ball_feeder.target_side = (side == MotionClip.DrillSide.Forehand ? BallFeeder.TargetSide.Forehand
+                                       : (side == MotionClip.DrillSide.Backhand ? BallFeeder.TargetSide.Backhand
+                                          : BallFeeder.TargetSide.Player));
+        }
+        if (play != null && play.robot != null) {
+            string pat = (side == MotionClip.DrillSide.Forehand ? "Forehand"
+                          : (side == MotionClip.DrillSide.Backhand ? "Backhand" : "Random"));
+            int idx = System.Array.IndexOf(play.robot.patterns, pat);
+            if (idx >= 0)
+                play.robot.pattern = idx;
+        }
+    }
+
+    void sync_settings_rally_speed(int level) {
+        if (play == null || play.settings == null)
+            return;
+        if (level == 0 && play.settings.rally_slow != null) play.settings.rally_slow.isOn = true;
+        else if (level == 1 && play.settings.rally_medium != null) play.settings.rally_medium.isOn = true;
+        else if (level == 2 && play.settings.rally_fast != null) play.settings.rally_fast.isOn = true;
+    }
+
+    void refresh_dashboard() {
+        if (dashboard != null)
+            dashboard.refresh();
     }
 
     public void toggle_recording() {
@@ -252,6 +395,7 @@ public class GhostCoach : MonoBehaviour {
             MotionClip c = recorder.stop_recording();
             experiment.log_event("recording_stop", c != null ? c.name : "not saved: " + recorder.discarded);
             if (c != null) {
+                custom_recorded_clip = c;
                 set_coach(c);
                 show_message("Sparade " + c.name + "\n" + c.contact_times().Count + " slag, "
                              + c.duration.ToString("F0") + " s");
@@ -260,6 +404,7 @@ public class GhostCoach : MonoBehaviour {
             play.paddle_hand.wand.haptic_pulses(3, 0.04f, 0.8f, 0.06f);
             if (c == null)
                 update_ghost();
+            refresh_dashboard();
         }
     }
 
@@ -274,9 +419,11 @@ public class GhostCoach : MonoBehaviour {
             coach_ghost.show(coach_clip);
         else
             coach_ghost.hide();
-        set_robot(phase == Phase.Path);
+        set_robot(training_mode == TrainingMode.Rally);
         path_guide.offset = coach_ghost.player_shift;
-        if (live && phase == Phase.Path)
+        bool show_path = live && (training_mode == TrainingMode.Rally
+                                  || (training_mode == TrainingMode.Drill && show_path_in_drill));
+        if (show_path)
             path_guide.show(coach_clip);
         else
             path_guide.hide();
@@ -336,12 +483,16 @@ public class GhostCoach : MonoBehaviour {
     // marker.  For when buttons have been pressed at random.
     public void reset() {
         recorder.cancel_recording();
+        if (ball_feeder != null && ball_feeder.feeding)
+            ball_feeder.stop_feeding();
         coach_ghost.speed = 0.5f;
         stroke = coach_ghost.stroke = path_guide.stroke = 0;
         phase = Phase.Coach;
+        training_mode = TrainingMode.ViewCoach;
         update_ghost();
         show_message("Återställd\nTitta på coachen");
         experiment.log_event("reset", "");
+        refresh_dashboard();
     }
 
     // Hide or show the racket and the ball in the hand.  Remembered.
@@ -353,12 +504,14 @@ public class GhostCoach : MonoBehaviour {
         state.save();
         show_message(hide ? "Racket och boll i handen dolda" : "Racket och boll i handen visas");
         experiment.log_event("hand_visuals", hide ? "hidden" : "shown");
+        refresh_dashboard();
     }
 
     public void change_speed() {
         float s = coach_ghost.next_speed();
         show_message("Coachens hastighet " + Mathf.RoundToInt(100f * s) + " %");
         experiment.log_event("coach_speed", Mathf.RoundToInt(100f * s) + "%");
+        refresh_dashboard();
     }
 
     void show_message(string text) {

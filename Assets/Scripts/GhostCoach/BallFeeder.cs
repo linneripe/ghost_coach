@@ -7,12 +7,21 @@ using UnityEngine;
 // whether or how the player returns the ball.
 public class BallFeeder : MonoBehaviour {
 
+    public enum TargetSide { Player, Forehand, Backhand }
+
+    public static readonly float[] speed_presets = { 3.8f, 5.0f, 6.5f };
+    public static readonly string[] speed_labels = { "Slow", "Medium", "Fast" };
+
     public Play play;
     public Table table;
 
     public float feed_interval = 3.0f;     // Seconds between feeds.
     public float feed_speed = 5.0f;        // Horizontal speed (m/s).
     public float feed_topspin = 1.0f;      // Mild topspin (m/s at ball surface).
+    public TargetSide target_side = TargetSide.Player;
+    public float forehand_x = 0.45f;       // Sideways bounce offset for forehand/backhand drills.
+    int current_speed_level = 1;
+    public int speed_level { get { return current_speed_level; } }
 
     // Coordinates relative to the full table center (at the net; y relative to top_y).
     public Vector3 spawn_offset = new Vector3(0.0f, 0.35f, 1.45f);
@@ -26,6 +35,11 @@ public class BallFeeder : MonoBehaviour {
 
     float timer = 0f;
 
+    public void apply_speed_level(int level) {
+        current_speed_level = Mathf.Clamp(level, 0, speed_presets.Length - 1);
+        feed_speed = speed_presets[current_speed_level];
+    }
+
     void Update() {
         if (!feeding)
             return;
@@ -38,6 +52,10 @@ public class BallFeeder : MonoBehaviour {
     }
 
     public void start_feeding() {
+        start_feeding(true);
+    }
+
+    public void start_feeding(bool hide_ghost) {
         if (feeding)
             return;
         feeding = true;
@@ -49,9 +67,9 @@ public class BallFeeder : MonoBehaviour {
                 play.robot.auto_serve = false;
         }
 
-        // Run standalone: hide GhostCoach visuals if present.
+        // Standalone trigger mode hides GhostCoach visuals; dashboard Drill mode keeps them.
         GhostCoach coach = GetComponent<GhostCoach>();
-        if (coach != null) {
+        if (hide_ghost && coach != null) {
             if (coach.coach_ghost != null)
                 coach.coach_ghost.hide();
             if (coach.path_guide != null)
@@ -59,6 +77,8 @@ public class BallFeeder : MonoBehaviour {
         }
 
         show_message("Ball Feed: ON (every " + feed_interval.ToString("F1") + " s)");
+        if (coach != null && coach.dashboard != null)
+            coach.dashboard.refresh();
     }
 
     public void stop_feeding() {
@@ -66,13 +86,16 @@ public class BallFeeder : MonoBehaviour {
             return;
         feeding = false;
         show_message("Ball Feed: OFF");
+        GhostCoach coach = GetComponent<GhostCoach>();
+        if (coach != null && coach.dashboard != null)
+            coach.dashboard.refresh();
     }
 
     public void toggle_feeding() {
         if (feeding)
             stop_feeding();
         else
-            start_feeding();
+            start_feeding(true);
     }
 
     public void OnToggleBallFeed() {
@@ -98,8 +121,9 @@ public class BallFeeder : MonoBehaviour {
                                             new Vector3(center.x + spawn_offset.x,
                                                         top_y + spawn_offset.y,
                                                         center.z + spawn_offset.z));
-        // Land in line with the player, so the ball comes to where they stand.
-        float bounce_x = Mathf.Clamp(player_x() - center.x, -bounce_x_limit, bounce_x_limit);
+        // Land on the configured drill side, or in line with the player.
+        float target_x = compute_target_x(center.x);
+        float bounce_x = Mathf.Clamp(target_x, -bounce_x_limit, bounce_x_limit);
         Vector3 bounce = TableSpace.to_world(table.transform,
                                              new Vector3(center.x + bounce_x,
                                                          top_y + b.radius,
@@ -135,6 +159,14 @@ public class BallFeeder : MonoBehaviour {
     float player_x() {
         Camera head = (play != null && play.passthrough_camera != null ? play.passthrough_camera : Camera.main);
         return (head != null ? TableSpace.to_table(table.transform, head.transform.position).x : 0f);
+    }
+
+    float compute_target_x(float center_x) {
+        if (target_side == TargetSide.Player)
+            return player_x() - center_x;
+        bool left = (play != null && play.paddle_hand != null && play.paddle_hand.wand != null && play.paddle_hand.wand.left);
+        float fh = (left ? -forehand_x : forehand_x);
+        return (target_side == TargetSide.Forehand ? fh : -fh);
     }
 
     void show_message(string text) {

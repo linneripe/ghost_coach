@@ -108,17 +108,10 @@ public class CoachGhost : MonoBehaviour {
         return speed;
     }
 
-    // Repeat the chosen stroke, from a little before its ball contact to a
-    // little after, or the whole clip if it has no strokes.
+    // Play the full clip so consecutive hits in the clip loop continuously.
     void set_loop() {
-        List<MotionEvent> strokes = clip.strokes();
         loop_start = 0f;
         loop_end = clip.duration;
-        if (strokes.Count > 0) {
-            float contact = strokes[stroke % strokes.Count].t;
-            loop_start = Mathf.Max(0f, contact - lead_time);
-            loop_end = Mathf.Min(clip.duration, contact + follow_time);
-        }
     }
 
     void Update() {
